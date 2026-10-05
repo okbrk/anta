@@ -1,23 +1,19 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Data for testing anta.tests.ptp."""
 
 from __future__ import annotations
 
-import sys
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from anta.models import AntaTest
-from anta.result_manager.models import AntaTestStatus
 from anta.tests.ptp import VerifyPtpGMStatus, VerifyPtpLockStatus, VerifyPtpModeStatus, VerifyPtpOffset, VerifyPtpPortModeStatus
 from tests.units.anta_tests import test
 
-if TYPE_CHECKING:
-    from tests.units.anta_tests import AntaUnitTestData
-
-DATA: AntaUnitTestData = {
-    (VerifyPtpModeStatus, "success"): {
+DATA: list[dict[str, Any]] = [
+    {
+        "name": "success",
+        "test": VerifyPtpModeStatus,
         "eos_data": [
             {
                 "ptpMode": "ptpBoundaryClock",
@@ -35,17 +31,26 @@ DATA: AntaUnitTestData = {
                 "ptpIntfSummaries": {},
             }
         ],
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyPtpModeStatus, "failure"): {
+    {
+        "name": "failure",
+        "test": VerifyPtpModeStatus,
         "eos_data": [{"ptpMode": "ptpDisabled", "ptpIntfSummaries": {}}],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Not configured as a PTP Boundary Clock - Actual: ptpDisabled"]},
+        "inputs": None,
+        "expected": {"result": "failure", "messages": ["The device is not configured as a PTP Boundary Clock: 'ptpDisabled'"]},
     },
-    (VerifyPtpModeStatus, "skipped"): {
+    {
+        "name": "skipped",
+        "test": VerifyPtpModeStatus,
         "eos_data": [{"ptpIntfSummaries": {}}],
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["PTP is not configured"]},
+        "inputs": None,
+        "expected": {"result": "skipped", "messages": ["PTP is not configured"]},
     },
-    (VerifyPtpGMStatus, "success"): {
+    {
+        "name": "success",
+        "test": VerifyPtpGMStatus,
         "eos_data": [
             {
                 "ptpMode": "ptpBoundaryClock",
@@ -67,9 +72,11 @@ DATA: AntaUnitTestData = {
             }
         ],
         "inputs": {"gmid": "0xec:46:70:ff:fe:00:ff:a8"},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyPtpGMStatus, "failure"): {
+    {
+        "name": "failure",
+        "test": VerifyPtpGMStatus,
         "eos_data": [
             {
                 "ptpMode": "ptpBoundaryClock",
@@ -90,16 +97,22 @@ DATA: AntaUnitTestData = {
         ],
         "inputs": {"gmid": "0xec:46:70:ff:fe:00:ff:a8"},
         "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["The device is locked to the incorrect Grandmaster - Expected: 0xec:46:70:ff:fe:00:ff:a8 Actual: 0x00:1c:73:ff:ff:0a:00:01"],
+            "result": "failure",
+            "messages": [
+                "The device is locked to the following Grandmaster: '0x00:1c:73:ff:ff:0a:00:01', which differ from the expected one.",
+            ],
         },
     },
-    (VerifyPtpGMStatus, "skipped"): {
+    {
+        "name": "skipped",
+        "test": VerifyPtpGMStatus,
         "eos_data": [{"ptpIntfSummaries": {}}],
         "inputs": {"gmid": "0xec:46:70:ff:fe:00:ff:a8"},
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["PTP is not configured"]},
+        "expected": {"result": "skipped", "messages": ["PTP is not configured"]},
     },
-    (VerifyPtpLockStatus, "success"): {
+    {
+        "name": "success",
+        "test": VerifyPtpLockStatus,
         "eos_data": [
             {
                 "ptpMode": "ptpBoundaryClock",
@@ -120,9 +133,12 @@ DATA: AntaUnitTestData = {
                 },
             }
         ],
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyPtpLockStatus, "failure"): {
+    {
+        "name": "failure",
+        "test": VerifyPtpLockStatus,
         "eos_data": [
             {
                 "ptpMode": "ptpBoundaryClock",
@@ -141,13 +157,24 @@ DATA: AntaUnitTestData = {
                 },
             }
         ],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Lock is more than 60s old - Actual: 157s"]},
+        "inputs": None,
+        "expected": {"result": "failure", "messages": ["The device lock is more than 60s old: 157s"]},
     },
-    (VerifyPtpLockStatus, "skipped"): {
+    {
+        "name": "skipped",
+        "test": VerifyPtpLockStatus,
         "eos_data": [{"ptpIntfSummaries": {}}],
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["PTP is not configured"]},
+        "inputs": None,
+        "expected": {
+            "result": "skipped",
+            "messages": [
+                "PTP is not configured",
+            ],
+        },
     },
-    (VerifyPtpOffset, "success"): {
+    {
+        "name": "success",
+        "test": VerifyPtpOffset,
         "eos_data": [
             {
                 "monitorEnabled": True,
@@ -174,9 +201,12 @@ DATA: AntaUnitTestData = {
                 ],
             }
         ],
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyPtpOffset, "failure"): {
+    {
+        "name": "failure",
+        "test": VerifyPtpOffset,
         "eos_data": [
             {
                 "monitorEnabled": True,
@@ -203,16 +233,27 @@ DATA: AntaUnitTestData = {
                 ],
             }
         ],
+        "inputs": None,
         "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Interface: Ethernet27/1 - Timing offset from master is greater than +/- 1000ns: Actual: 1200, -1300"],
+            "result": "failure",
+            "messages": [("The device timing offset from master is greater than +/- 1000ns: {'Ethernet27/1': [1200, -1300]}")],
         },
     },
-    (VerifyPtpOffset, "skipped"): {
-        "eos_data": [{"monitorEnabled": True, "ptpMonitorData": []}],
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["PTP is not configured"]},
+    {
+        "name": "skipped",
+        "test": VerifyPtpOffset,
+        "eos_data": [
+            {
+                "monitorEnabled": True,
+                "ptpMonitorData": [],
+            },
+        ],
+        "inputs": None,
+        "expected": {"result": "skipped", "messages": ["PTP is not configured"]},
     },
-    (VerifyPtpPortModeStatus, "success"): {
+    {
+        "name": "success",
+        "test": VerifyPtpPortModeStatus,
         "eos_data": [
             {
                 "ptpMode": "ptpBoundaryClock",
@@ -250,13 +291,19 @@ DATA: AntaUnitTestData = {
                 },
             }
         ],
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyPtpPortModeStatus, "failure-no-interfaces"): {
+    {
+        "name": "failure-no-interfaces",
+        "test": VerifyPtpPortModeStatus,
         "eos_data": [{"ptpIntfSummaries": {}}],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["No interfaces are PTP enabled"]},
+        "inputs": None,
+        "expected": {"result": "failure", "messages": ["No interfaces are PTP enabled"]},
     },
-    (VerifyPtpPortModeStatus, "failure-invalid-state"): {
+    {
+        "name": "failure-invalid-state",
+        "test": VerifyPtpPortModeStatus,
         "eos_data": [
             {
                 "ptpMode": "ptpBoundaryClock",
@@ -287,6 +334,7 @@ DATA: AntaUnitTestData = {
                 },
             }
         ],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["The following interface(s) are not in a valid PTP state: Ethernet53, Ethernet1"]},
+        "inputs": None,
+        "expected": {"result": "failure", "messages": ["The following interface(s) are not in a valid PTP state: '['Ethernet53', 'Ethernet1']'"]},
     },
-}
+]

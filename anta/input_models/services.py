@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Module containing input models for services tests."""
@@ -32,7 +32,7 @@ class DnsServer(BaseModel):
         --------
         Server 10.0.0.1 (VRF: default, Priority: 1)
         """
-        return f"Server {self.server_address} VRF: {self.vrf} Priority: {self.priority}"
+        return f"Server {self.server_address} (VRF: {self.vrf}, Priority: {self.priority})"
 
 
 class ErrdisableRecovery(BaseModel):

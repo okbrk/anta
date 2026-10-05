@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Inventory module for ANTA."""
@@ -8,29 +8,25 @@ from __future__ import annotations
 import asyncio
 import logging
 from ipaddress import ip_address, ip_network
-from json import load as json_load
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import Any, ClassVar
 
 from pydantic import ValidationError
 from yaml import YAMLError, safe_load
 
-from anta.device import AntaDevice, AntaDeviceCapabilities, AsyncEOSDevice, SSLParameters
+from anta.device import AntaDevice, AsyncEOSDevice
 from anta.inventory.exceptions import InventoryIncorrectSchemaError, InventoryRootKeyError
-from anta.inventory.models import AntaInventoryHost, AntaInventoryInput
-from anta.logger import anta_log_exception, exc_to_str
+from anta.inventory.models import AntaInventoryInput
+from anta.logger import anta_log_exception
 
 logger = logging.getLogger(__name__)
-
-if TYPE_CHECKING:
-    from typing_extensions import TypeIs
 
 
 class AntaInventory(dict[str, AntaDevice]):
     """Inventory abstraction for ANTA framework."""
 
     # Root key of inventory part of the inventory file
-    INVENTORY_ROOT_KEY: str = "anta_inventory"
+    INVENTORY_ROOT_KEY = "anta_inventory"
     # Supported Output format
     INVENTORY_OUTPUT_FORMAT: ClassVar[list[str]] = ["native", "json"]
 
@@ -61,77 +57,10 @@ class AntaInventory(dict[str, AntaDevice]):
         return updated_kwargs
 
     @staticmethod
-    def _resolve_session_auth(
-        device_name: str,
-        device_capabilities: AntaDeviceCapabilities,
-        *,
-        use_session_auth_override: bool | None,
-        inventory_use_session_auth: bool,
-    ) -> bool:
-        """Resolve the effective session auth setting for one device.
-
-        Parameters
-        ----------
-        use_session_auth_override
-            Override value from any caller: ``True`` forces session auth on for capable devices,
-            ``False`` forces it off regardless of inventory settings, ``None`` defers to the
-            per-device inventory value.
-        inventory_use_session_auth
-            The per-device/network/range value from the inventory file.
-        device_name
-            Device name used in warning/error messages.
-        device_capabilities
-            Capabilities of the device class being instantiated.
-
-        Raises
-        ------
-        ValueError
-            If session auth is requested via the inventory for a device that does not support it.
-        """
-        if use_session_auth_override is False:
-            return False
-
-        requested_from_inventory = inventory_use_session_auth
-        requested_from_override = use_session_auth_override is True
-
-        if not requested_from_inventory and not requested_from_override:
-            return False
-
-        if device_capabilities.supports_session_auth:
-            return True
-
-        if requested_from_inventory:
-            msg = f"Device '{device_name}' does not support session authentication but it is requested in the inventory."
-            raise ValueError(msg)
-
-        logger.warning("Device '%s' does not support session authentication; session auth disabled for this device.", device_name)
-        return False
-
-    @staticmethod
-    def _resolve_ssl_params(
-        device_name: str,
-        device_capabilities: AntaDeviceCapabilities,
-        ssl_params: SSLParameters | None,
-    ) -> SSLParameters | None:
-        """Return SSL parameters only when they are supported by the device implementation.
-
-        Inventory validation remains independent of the concrete device type. If a future
-        device implementation does not support SSL, its inventory still parses and the
-        unsupported parameters are ignored with a warning during device instantiation.
-        """
-        if ssl_params is None or device_capabilities.supports_ssl:
-            return ssl_params
-
-        logger.warning("Device '%s' does not support SSL; SSL parameters ignored for this device.", device_name)
-        return None
-
-    @staticmethod
     def _parse_hosts(
         inventory_input: AntaInventoryInput,
         inventory: AntaInventory,
-        *,
-        use_session_auth_override: bool | None,
-        **kwargs: Any,  # noqa: ANN401
+        **kwargs: dict[str, Any],
     ) -> None:
         """Parse the host section of an AntaInventoryInput and add the devices to the inventory.
 
@@ -141,8 +70,6 @@ class AntaInventory(dict[str, AntaDevice]):
             AntaInventoryInput used to parse the devices.
         inventory
             AntaInventory to add the parsed devices to.
-        use_session_auth_override
-            Session auth override: True forces on, False forces off, None defers to inventory.
         **kwargs
             Additional keyword arguments to pass to the device constructor.
 
@@ -152,19 +79,11 @@ class AntaInventory(dict[str, AntaDevice]):
 
         for host in inventory_input.hosts:
             updated_kwargs = AntaInventory._update_disable_cache(kwargs, inventory_disable_cache=host.disable_cache)
-            device_name = host.name or f"{host.host}{f':{host.port}' if host.port else ''}"
-            updated_kwargs["use_session_auth"] = AntaInventory._resolve_session_auth(
-                device_name,
-                AsyncEOSDevice.capabilities,
-                use_session_auth_override=use_session_auth_override,
-                inventory_use_session_auth=host.use_session_auth,
-            )
             device = AsyncEOSDevice(
                 name=host.name,
                 host=str(host.host),
                 port=host.port,
                 tags=host.tags,
-                ssl_params=AntaInventory._resolve_ssl_params(device_name, AsyncEOSDevice.capabilities, host.ssl_params),
                 **updated_kwargs,
             )
             inventory.add_device(device)
@@ -173,9 +92,7 @@ class AntaInventory(dict[str, AntaDevice]):
     def _parse_networks(
         inventory_input: AntaInventoryInput,
         inventory: AntaInventory,
-        *,
-        use_session_auth_override: bool | None,
-        **kwargs: Any,  # noqa: ANN401
+        **kwargs: dict[str, Any],
     ) -> None:
         """Parse the network section of an AntaInventoryInput and add the devices to the inventory.
 
@@ -185,8 +102,6 @@ class AntaInventory(dict[str, AntaDevice]):
             AntaInventoryInput used to parse the devices.
         inventory
             AntaInventory to add the parsed devices to.
-        use_session_auth_override
-            Session auth override: True forces on, False forces off, None defers to inventory.
         **kwargs
            Additional keyword arguments to pass to the device constructor.
 
@@ -203,18 +118,7 @@ class AntaInventory(dict[str, AntaDevice]):
             for network in inventory_input.networks:
                 updated_kwargs = AntaInventory._update_disable_cache(kwargs, inventory_disable_cache=network.disable_cache)
                 for host_ip in ip_network(str(network.network)):
-                    updated_kwargs["use_session_auth"] = AntaInventory._resolve_session_auth(
-                        str(host_ip),
-                        AsyncEOSDevice.capabilities,
-                        use_session_auth_override=use_session_auth_override,
-                        inventory_use_session_auth=network.use_session_auth,
-                    )
-                    device = AsyncEOSDevice(
-                        host=str(host_ip),
-                        tags=network.tags,
-                        ssl_params=AntaInventory._resolve_ssl_params(str(host_ip), AsyncEOSDevice.capabilities, network.ssl_params),
-                        **updated_kwargs,
-                    )
+                    device = AsyncEOSDevice(host=str(host_ip), tags=network.tags, **updated_kwargs)
                     inventory.add_device(device)
         except ValueError as e:
             message = "Could not parse the network section in the inventory"
@@ -225,9 +129,7 @@ class AntaInventory(dict[str, AntaDevice]):
     def _parse_ranges(
         inventory_input: AntaInventoryInput,
         inventory: AntaInventory,
-        *,
-        use_session_auth_override: bool | None,
-        **kwargs: Any,  # noqa: ANN401
+        **kwargs: dict[str, Any],
     ) -> None:
         """Parse the range section of an AntaInventoryInput and add the devices to the inventory.
 
@@ -237,8 +139,6 @@ class AntaInventory(dict[str, AntaDevice]):
             AntaInventoryInput used to parse the devices.
         inventory
             AntaInventory to add the parsed devices to.
-        use_session_auth_override
-            Session auth override: True forces on, False forces off, None defers to inventory.
         **kwargs
             Additional keyword arguments to pass to the device constructor.
 
@@ -259,18 +159,7 @@ class AntaInventory(dict[str, AntaDevice]):
                 while range_increment <= range_stop:  # type: ignore[operator]
                     # mypy raise an issue about comparing IPv4Address and IPv6Address
                     # but this is handled by the ipaddress module natively by raising a TypeError
-                    updated_kwargs["use_session_auth"] = AntaInventory._resolve_session_auth(
-                        str(range_increment),
-                        AsyncEOSDevice.capabilities,
-                        use_session_auth_override=use_session_auth_override,
-                        inventory_use_session_auth=range_def.use_session_auth,
-                    )
-                    device = AsyncEOSDevice(
-                        host=str(range_increment),
-                        tags=range_def.tags,
-                        ssl_params=AntaInventory._resolve_ssl_params(str(range_increment), AsyncEOSDevice.capabilities, range_def.ssl_params),
-                        **updated_kwargs,
-                    )
+                    device = AsyncEOSDevice(host=str(range_increment), tags=range_def.tags, **updated_kwargs)
                     inventory.add_device(device)
                     range_increment += 1
         except ValueError as e:
@@ -289,12 +178,10 @@ class AntaInventory(dict[str, AntaDevice]):
         password: str,
         enable_password: str | None = None,
         timeout: float | None = None,
-        file_format: Literal["yaml", "json"] = "yaml",
         *,
         enable: bool = False,
         insecure: bool = False,
         disable_cache: bool = False,
-        use_session_auth: bool | None = None,
     ) -> AntaInventory:
         """Create an AntaInventory instance from an inventory file.
 
@@ -311,19 +198,13 @@ class AntaInventory(dict[str, AntaDevice]):
         enable_password
             Enable password to use if required.
         timeout
-            Global timeout value in seconds for outgoing eAPI calls. None means no timeout.
-        file_format
-            Whether the inventory file is in JSON or YAML.
+            Timeout value in seconds for outgoing API calls.
         enable
             Whether or not the commands need to be run in enable mode towards the devices.
         insecure
             Disable SSH Host Key validation.
         disable_cache
             Disable cache globally.
-        use_session_auth
-            Session authentication override. ``True`` forces session auth on for all devices,
-            ``False`` (``--no-session-auth``) forces it off regardless of inventory settings,
-            ``None`` (unset) defers to the per-device inventory value.
 
         Raises
         ------
@@ -333,10 +214,6 @@ class AntaInventory(dict[str, AntaDevice]):
             Inventory file is not following AntaInventory Schema.
 
         """
-        if file_format not in ["yaml", "json"]:
-            message = f"'{file_format}' is not a valid format for an AntaInventory file. Only 'yaml' and 'json' are supported."
-            raise ValueError(message)
-
         inventory = AntaInventory()
         kwargs: dict[str, Any] = {
             "username": username,
@@ -347,12 +224,20 @@ class AntaInventory(dict[str, AntaDevice]):
             "insecure": insecure,
             "disable_cache": disable_cache,
         }
+        if username is None:
+            message = "'username' is required to create an AntaInventory"
+            logger.error(message)
+            raise ValueError(message)
+        if password is None:
+            message = "'password' is required to create an AntaInventory"
+            logger.error(message)
+            raise ValueError(message)
 
         try:
             filename = Path(filename)
             with filename.open(encoding="UTF-8") as file:
-                data = safe_load(file) if file_format == "yaml" else json_load(file)
-        except (TypeError, YAMLError, OSError, ValueError) as e:
+                data = safe_load(file)
+        except (TypeError, YAMLError, OSError) as e:
             message = f"Unable to parse ANTA Device Inventory file '{filename}'"
             anta_log_exception(e, message, logger)
             raise
@@ -369,9 +254,9 @@ class AntaInventory(dict[str, AntaDevice]):
             raise
 
         # Read data from input
-        AntaInventory._parse_hosts(inventory_input, inventory, use_session_auth_override=use_session_auth, **kwargs)
-        AntaInventory._parse_networks(inventory_input, inventory, use_session_auth_override=use_session_auth, **kwargs)
-        AntaInventory._parse_ranges(inventory_input, inventory, use_session_auth_override=use_session_auth, **kwargs)
+        AntaInventory._parse_hosts(inventory_input, inventory, **kwargs)
+        AntaInventory._parse_networks(inventory_input, inventory, **kwargs)
+        AntaInventory._parse_ranges(inventory_input, inventory, **kwargs)
 
         return inventory
 
@@ -379,11 +264,6 @@ class AntaInventory(dict[str, AntaDevice]):
     def devices(self) -> list[AntaDevice]:
         """List of AntaDevice in this inventory."""
         return list(self.values())
-
-    @property
-    def max_potential_connections(self) -> int | None:
-        """Max potential connections of this inventory."""
-        return self._get_potential_connections()
 
     ###########################################################################
     # Public methods
@@ -425,29 +305,6 @@ class AntaInventory(dict[str, AntaDevice]):
             result.add_device(device)
         return result
 
-    def _get_potential_connections(self) -> int | None:
-        """Calculate the total potential concurrent connections for the current inventory.
-
-        This method sums the maximum concurrent connections allowed for each
-        AntaDevice in the inventory.
-
-        Returns
-        -------
-        int | None
-            The total sum of the `max_connections` attribute for all AntaDevice objects
-            in the inventory. Returns None if any AntaDevice does not have a `max_connections`
-            attribute or if its value is None, as the total count cannot be determined.
-        """
-        potential_connections = 0
-        all_have_connections = True
-        for device in self.devices:
-            if device.max_connections is None:
-                all_have_connections = False
-                logger.debug("Device %s 'max_connections' is not available", device.name)
-                break
-            potential_connections += device.max_connections
-        return None if not all_have_connections else potential_connections
-
     ###########################################################################
     # SET methods
     ###########################################################################
@@ -485,36 +342,3 @@ class AntaInventory(dict[str, AntaDevice]):
             if isinstance(r, Exception):
                 message = "Error when refreshing inventory"
                 anta_log_exception(r, message, logger)
-
-    def is_base_class(self, device: AntaDevice) -> TypeIs[AntaDevice]:
-        """Check the type of device, return True if the device is an AntaDevice."""
-        return not hasattr(device, "host") and not hasattr(device, "port")
-
-    async def disconnect_inventory(self) -> None:
-        """Run `disconnect()` coroutines for all AntaDevice objects in this inventory."""
-        results = await asyncio.gather(
-            *(device.disconnect() for device in self.values()),
-            return_exceptions=True,
-        )
-        for r in results:
-            if isinstance(r, Exception):
-                logger.warning("Error when disconnecting inventory: %s", exc_to_str(r))
-
-    def dump(self) -> AntaInventoryInput:
-        """Dump the AntaInventory to an AntaInventoryInput.
-
-        Each hosts is dumped individually.
-        """
-        hosts = [
-            AntaInventoryHost(
-                name=device.name,
-                host=device.host if not self.is_base_class(device) else device.name,
-                port=device.port if not self.is_base_class(device) else None,
-                tags=device.tags,
-                disable_cache=device.cache is None,
-                use_session_auth=device.use_session_auth if isinstance(device, AsyncEOSDevice) else False,
-                **({"ssl_params": device.ssl_params} if isinstance(device, AsyncEOSDevice) and device.ssl_params is not None else {}),
-            )
-            for device in self.devices
-        ]
-        return AntaInventoryInput(hosts=hosts)

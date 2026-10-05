@@ -1,24 +1,17 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Test inputs for anta.tests.system."""
 
 from __future__ import annotations
 
-import sys
-from json import dumps
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from anta.models import AntaTest
-from anta.result_manager.models import AntaTestStatus
 from anta.tests.system import (
     VerifyAgentLogs,
     VerifyCoredump,
     VerifyCPUUtilization,
-    VerifyFilePresence,
     VerifyFileSystemUtilization,
-    VerifyFlashUtilization,
-    VerifyMaintenance,
     VerifyMemoryUtilization,
     VerifyNTP,
     VerifyNTPAssociations,
@@ -27,357 +20,287 @@ from anta.tests.system import (
 )
 from tests.units.anta_tests import test
 
-if TYPE_CHECKING:
-    from tests.units.anta_tests import AntaUnitTestData
-
-DATA: AntaUnitTestData = {
-    (VerifyUptime, "success"): {
+DATA: list[dict[str, Any]] = [
+    {
+        "name": "success",
+        "test": VerifyUptime,
         "eos_data": [{"upTime": 1186689.15, "loadAvg": [0.13, 0.12, 0.09], "users": 1, "currentTime": 1683186659.139859}],
         "inputs": {"minimum": 666},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyUptime, "failure"): {
+    {
+        "name": "failure",
+        "test": VerifyUptime,
         "eos_data": [{"upTime": 665.15, "loadAvg": [0.13, 0.12, 0.09], "users": 1, "currentTime": 1683186659.139859}],
         "inputs": {"minimum": 666},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Device uptime is incorrect - Expected: 666s Actual: 665.15s"]},
+        "expected": {"result": "failure", "messages": ["Device uptime is 665.15 seconds"]},
     },
-    (VerifyReloadCause, "success-no-reload"): {
+    {
+        "name": "success-no-reload",
+        "test": VerifyReloadCause,
         "eos_data": [{"kernelCrashData": [], "resetCauses": [], "full": False}],
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyReloadCause, "success"): {
-        "eos_data": [
-            {
-                "resetCauses": [
-                    {"recommendedAction": "No action necessary.", "description": "Reload requested by the user.", "timestamp": 1683186892.0, "debugInfoIsDir": False}
-                ],
-                "full": False,
-            }
-        ],
-        "inputs": {"allowed_causes": ["Reload requested by the user."]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyReloadCause, "success-valid-cause-user"): {
-        "eos_data": [
-            {
-                "resetCauses": [
-                    {"recommendedAction": "No action necessary.", "description": "Reload requested by the user.", "timestamp": 1683186892.0, "debugInfoIsDir": False}
-                ],
-                "full": False,
-            }
-        ],
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyReloadCause, "success-valid-reload-cause-ztp"): {
+    {
+        "name": "success-valid-cause",
+        "test": VerifyReloadCause,
         "eos_data": [
             {
                 "resetCauses": [
                     {
-                        "description": "System reloaded due to Zero Touch Provisioning",
-                        "timestamp": 1729856740.0,
                         "recommendedAction": "No action necessary.",
+                        "description": "Reload requested by the user.",
+                        "timestamp": 1683186892.0,
                         "debugInfoIsDir": False,
-                    }
+                    },
                 ],
                 "full": False,
-            }
+            },
         ],
-        "inputs": {"allowed_causes": ["ZTP"]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyReloadCause, "success-valid-reload-cause-fpga"): {
+    {
+        "name": "failure",
+        "test": VerifyReloadCause,
+        # The failure cause is made up
         "eos_data": [
             {
                 "resetCauses": [
-                    {
-                        "description": "Reload requested after FPGA upgrade",
-                        "timestamp": 1729856740.0,
-                        "recommendedAction": "No action necessary.",
-                        "debugInfoIsDir": False,
-                    }
+                    {"recommendedAction": "No action necessary.", "description": "Reload after crash.", "timestamp": 1683186892.0, "debugInfoIsDir": False},
                 ],
                 "full": False,
-            }
+            },
         ],
-        "inputs": {"allowed_causes": ["fpga"]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "failure", "messages": ["Reload cause is: 'Reload after crash.'"]},
     },
-    (VerifyReloadCause, "success-valid-reload-cause-user-hitless"): {
-        "eos_data": [
-            {
-                "resetCauses": [
-                    {
-                        "description": "Hitless reload requested by the user.",
-                        "timestamp": 1753717488.0,
-                        "recommendedAction": "No action necessary.",
-                        "debugInfoIsDir": False,
-                    }
-                ],
-                "full": False,
-            }
-        ],
-        "inputs": {"allowed_causes": ["USER_HITLESS"]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyReloadCause, "failure-invalid-reload-cause"): {
-        "eos_data": [
-            {
-                "resetCauses": [
-                    {
-                        "description": "Reload requested after FPGA upgrade",
-                        "timestamp": 1729856740.0,
-                        "recommendedAction": "No action necessary.",
-                        "debugInfoIsDir": False,
-                    }
-                ],
-                "full": False,
-            }
-        ],
-        "inputs": {"allowed_causes": ["ZTP"]},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Invalid reload cause -  Expected: 'System reloaded due to Zero Touch Provisioning' Actual: 'Reload requested after FPGA upgrade'"],
-        },
-    },
-    (VerifyReloadCause, "failure"): {
-        "eos_data": [
-            {
-                "resetCauses": [
-                    {"recommendedAction": "No action necessary.", "description": "Reload after crash.", "timestamp": 1683186892.0, "debugInfoIsDir": False}
-                ],
-                "full": False,
-            }
-        ],
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Invalid reload cause -  Expected: 'Reload requested by the user.', 'Reload requested after FPGA upgrade' Actual: 'Reload after crash.'"],
-        },
-    },
-    (VerifyReloadCause, "failed"): {
-        "eos_data": [
-            {
-                "resetCauses": [
-                    {"recommendedAction": "No action necessary.", "description": "Reload after crash.", "timestamp": 1683186892.0, "debugInfoIsDir": False}
-                ],
-                "full": False,
-            }
-        ],
-        "inputs": {"allowed_causes": ["Reload requested by the user."]},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Invalid reload cause -  Expected: 'Reload requested by the user.' Actual: 'Reload after crash.'"],
-        },
-    },
-    (VerifyCoredump, "success-without-minidump"): {
+    {
+        "name": "success-without-minidump",
+        "test": VerifyCoredump,
         "eos_data": [{"mode": "compressedDeferred", "coreFiles": []}],
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyCoredump, "success-with-minidump"): {
+    {
+        "name": "success-with-minidump",
+        "test": VerifyCoredump,
         "eos_data": [{"mode": "compressedDeferred", "coreFiles": ["minidump"]}],
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyCoredump, "failure-without-minidump"): {
+    {
+        "name": "failure-without-minidump",
+        "test": VerifyCoredump,
         "eos_data": [{"mode": "compressedDeferred", "coreFiles": ["core.2344.1584483862.Mlag.gz", "core.23101.1584483867.Mlag.gz"]}],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Core dump(s) have been found: core.2344.1584483862.Mlag.gz, core.23101.1584483867.Mlag.gz"]},
+        "inputs": None,
+        "expected": {"result": "failure", "messages": ["Core dump(s) have been found: ['core.2344.1584483862.Mlag.gz', 'core.23101.1584483867.Mlag.gz']"]},
     },
-    (VerifyCoredump, "failure-with-minidump"): {
+    {
+        "name": "failure-with-minidump",
+        "test": VerifyCoredump,
         "eos_data": [{"mode": "compressedDeferred", "coreFiles": ["minidump", "core.2344.1584483862.Mlag.gz", "core.23101.1584483867.Mlag.gz"]}],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Core dump(s) have been found: core.2344.1584483862.Mlag.gz, core.23101.1584483867.Mlag.gz"]},
+        "inputs": None,
+        "expected": {"result": "failure", "messages": ["Core dump(s) have been found: ['core.2344.1584483862.Mlag.gz', 'core.23101.1584483867.Mlag.gz']"]},
     },
-    (VerifyAgentLogs, "success"): {"eos_data": [""], "expected": {"result": AntaTestStatus.SUCCESS}},
-    (VerifyAgentLogs, "failure"): {
+    {
+        "name": "success",
+        "test": VerifyAgentLogs,
+        "eos_data": [""],
+        "inputs": None,
+        "expected": {"result": "success"},
+    },
+    {
+        "name": "failure",
+        "test": VerifyAgentLogs,
         "eos_data": [
-            (
-                "===> /var/log/agents/Test-666 Thu May  4 09:57:02 2023 <===\nCLI Exception: Exception\nCLI Exception: Backtrace\n===> /var/log/agents/Aaa-855"
-                " Fri Jul  7 15:07:00 2023 <===\n===== Output from /usr/bin/Aaa [] (PID=855) started Jul  7 15:06:11.606414 ===\n"
-                "EntityManager::doBackoff waiting for remote sysdb version ....ok\n\n===> /var/log/agents/Acl-830"
-                " Fri Jul  7 15:07:00 2023 <===\n===== Output from /usr/bin/Acl [] (PID=830) started Jul  7 15:06:10.871700 ===\n"
-                "EntityManager::doBackoff waiting for remote sysdb version ...................ok\n"
-            )
+            """===> /var/log/agents/Test-666 Thu May  4 09:57:02 2023 <===
+CLI Exception: Exception
+CLI Exception: Backtrace
+===> /var/log/agents/Aaa-855 Fri Jul  7 15:07:00 2023 <===
+===== Output from /usr/bin/Aaa [] (PID=855) started Jul  7 15:06:11.606414 ===
+EntityManager::doBackoff waiting for remote sysdb version ....ok
+
+===> /var/log/agents/Acl-830 Fri Jul  7 15:07:00 2023 <===
+===== Output from /usr/bin/Acl [] (PID=830) started Jul  7 15:06:10.871700 ===
+EntityManager::doBackoff waiting for remote sysdb version ...................ok
+""",
         ],
+        "inputs": None,
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
-                (
-                    "Device has reported agent crashes:\n * /var/log/agents/Test-666 Thu May  4 09:57:02 2023\n"
-                    " * /var/log/agents/Aaa-855 Fri Jul  7 15:07:00 2023\n * /var/log/agents/Acl-830 Fri Jul  7 15:07:00 2023"
-                )
+                "Device has reported agent crashes:\n"
+                " * /var/log/agents/Test-666 Thu May  4 09:57:02 2023\n"
+                " * /var/log/agents/Aaa-855 Fri Jul  7 15:07:00 2023\n"
+                " * /var/log/agents/Acl-830 Fri Jul  7 15:07:00 2023",
             ],
         },
     },
-    (VerifyCPUUtilization, "success"): {
+    {
+        "name": "success",
+        "test": VerifyCPUUtilization,
         "eos_data": [
             {
-                "timeInfo": {"loadAvg": [5.82, 4.52, 4.07]},
-                "cpuInfo": {"%Cpu(s)": {"user": 69.8, "system": 25.4, "nice": 0.0, "idle": 60.4}},
-                "memInfo": {},
-                "processes": {},
-            }
-        ],
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyCPUUtilization, "success-custom-threshold"): {
-        "eos_data": [
-            {
-                "timeInfo": {"loadAvg": [5.82, 4.52, 4.07]},
-                "cpuInfo": {"%Cpu(s)": {"user": 50.0, "system": 25.0, "nice": 0.0, "idle": 40.0}},
-                "memInfo": {},
-                "processes": {},
-            }
-        ],
-        "inputs": {"threshold": 70.0},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyCPUUtilization, "success-load-avg-period-1"): {
-        "eos_data": [
-            {
-                "timeInfo": {"loadAvg": [4.0, 3.5, 2.8]},
-                "cpuInfo": {"%Cpu(s)": {"user": 25.0, "system": 5.0, "nice": 0.0, "idle": 70.0}},
-                "memInfo": {},
-                "processes": {},
+                "cpuInfo": {"%Cpu(s)": {"idle": 88.2, "stolen": 0.0, "user": 5.9, "swIrq": 0.0, "ioWait": 0.0, "system": 0.0, "hwIrq": 5.9, "nice": 0.0}},
+                "processes": {
+                    "1": {
+                        "userName": "root",
+                        "status": "S",
+                        "memPct": 0.3,
+                        "niceValue": 0,
+                        "cpuPct": 0.0,
+                        "cpuPctType": "{:.1f}",
+                        "cmd": "systemd",
+                        "residentMem": "5096",
+                        "priority": "20",
+                        "activeTime": 360,
+                        "virtMem": "6644",
+                        "sharedMem": "3996",
+                    },
+                },
             },
-            "8\n",
         ],
-        "inputs": {"period": 1},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyCPUUtilization, "success-load-avg-period-5"): {
+    {
+        "name": "failure",
+        "test": VerifyCPUUtilization,
         "eos_data": [
             {
-                "timeInfo": {"loadAvg": [5.82, 3.0, 2.5]},
-                "cpuInfo": {"%Cpu(s)": {"user": 25.0, "system": 5.0, "nice": 0.0, "idle": 70.0}},
-                "memInfo": {},
-                "processes": {},
+                "cpuInfo": {"%Cpu(s)": {"idle": 24.8, "stolen": 0.0, "user": 5.9, "swIrq": 0.0, "ioWait": 0.0, "system": 0.0, "hwIrq": 5.9, "nice": 0.0}},
+                "processes": {
+                    "1": {
+                        "userName": "root",
+                        "status": "S",
+                        "memPct": 0.3,
+                        "niceValue": 0,
+                        "cpuPct": 0.0,
+                        "cpuPctType": "{:.1f}",
+                        "cmd": "systemd",
+                        "residentMem": "5096",
+                        "priority": "20",
+                        "activeTime": 360,
+                        "virtMem": "6644",
+                        "sharedMem": "3996",
+                    },
+                },
             },
-            "4\n",
         ],
-        "inputs": {"period": 5},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "failure", "messages": ["Device has reported a high CPU utilization: 75.2%"]},
     },
-    (VerifyCPUUtilization, "success-load-avg-period-15"): {
+    {
+        "name": "success",
+        "test": VerifyMemoryUtilization,
         "eos_data": [
             {
-                "timeInfo": {"loadAvg": [5.82, 4.52, 2.0]},
-                "cpuInfo": {"%Cpu(s)": {"user": 25.0, "system": 5.0, "nice": 0.0, "idle": 70.0}},
-                "memInfo": {},
-                "processes": {},
+                "uptime": 1994.67,
+                "modelName": "vEOS-lab",
+                "internalVersion": "4.27.3F-26379303.4273F",
+                "memTotal": 2004568,
+                "memFree": 879004,
+                "version": "4.27.3F",
             },
-            "4\n",
         ],
-        "inputs": {"period": 15},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyCPUUtilization, "failure-custom-threshold"): {
+    {
+        "name": "failure",
+        "test": VerifyMemoryUtilization,
         "eos_data": [
             {
-                "timeInfo": {"loadAvg": [5.82, 4.52, 4.07]},
-                "cpuInfo": {"%Cpu(s)": {"user": 50.0, "system": 25.0, "nice": 0.0, "idle": 25.0}},
-                "memInfo": {},
-                "processes": {},
-            }
+                "uptime": 1994.67,
+                "modelName": "vEOS-lab",
+                "internalVersion": "4.27.3F-26379303.4273F",
+                "memTotal": 2004568,
+                "memFree": 89004,
+                "version": "4.27.3F",
+            },
         ],
-        "inputs": {"threshold": 70.0},
+        "inputs": None,
+        "expected": {"result": "failure", "messages": ["Device has reported a high memory usage: 95.56%"]},
+    },
+    {
+        "name": "success",
+        "test": VerifyFileSystemUtilization,
+        "eos_data": [
+            """Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda2       3.9G  988M  2.9G  26% /mnt/flash
+none            294M   78M  217M  27% /
+none            294M   78M  217M  27% /.overlay
+/dev/loop0      461M  461M     0 100% /rootfs-i386
+""",
+        ],
+        "inputs": None,
+        "expected": {"result": "success"},
+    },
+    {
+        "name": "failure",
+        "test": VerifyFileSystemUtilization,
+        "eos_data": [
+            """Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda2       3.9G  988M  2.9G  84% /mnt/flash
+none            294M   78M  217M  27% /
+none            294M   78M  217M  84% /.overlay
+/dev/loop0      461M  461M     0 100% /rootfs-i386
+""",
+        ],
+        "inputs": None,
         "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["CPU utilization is above the threshold - Expected: < 70.0% Actual: 75.0%"],
-        },
-    },
-    (VerifyCPUUtilization, "failure-load-avg-period-1"): {
-        "eos_data": [
-            {
-                "timeInfo": {"loadAvg": [8.0, 5.0, 3.5]},
-                "cpuInfo": {"%Cpu(s)": {"user": 25.0, "system": 5.0, "nice": 0.0, "idle": 70.0}},
-                "memInfo": {},
-                "processes": {},
-            },
-            "4\n",
-        ],
-        "inputs": {"period": 1},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["CPU load average (1 min) is above the threshold - Expected: < 75.0% Actual: 200.0%"],
-        },
-    },
-    (VerifyCPUUtilization, "failure-load-avg-period-5"): {
-        "eos_data": [
-            {
-                "timeInfo": {"loadAvg": [5.82, 6.0, 3.5]},
-                "cpuInfo": {"%Cpu(s)": {"user": 25.0, "system": 5.0, "nice": 0.0, "idle": 70.0}},
-                "memInfo": {},
-                "processes": {},
-            },
-            "4\n",
-        ],
-        "inputs": {"period": 5},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["CPU load average (5 min) is above the threshold - Expected: < 75.0% Actual: 150.0%"],
-        },
-    },
-    (VerifyCPUUtilization, "failure-load-avg-period-15"): {
-        "eos_data": [
-            {
-                "timeInfo": {"loadAvg": [5.82, 4.52, 5.0]},
-                "cpuInfo": {"%Cpu(s)": {"user": 25.0, "system": 5.0, "nice": 0.0, "idle": 70.0}},
-                "memInfo": {},
-                "processes": {},
-            },
-            "4\n",
-        ],
-        "inputs": {"period": 15},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["CPU load average (15 min) is above the threshold - Expected: < 75.0% Actual: 125.0%"],
-        },
-    },
-    (VerifyMemoryUtilization, "success"): {
-        "eos_data": [
-            {"uptime": 1994.67, "modelName": "vEOS-lab", "internalVersion": "4.27.3F-26379303.4273F", "memTotal": 2004568, "memFree": 879004, "version": "4.27.3F"}
-        ],
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyMemoryUtilization, "failure"): {
-        "eos_data": [
-            {"uptime": 1994.67, "modelName": "vEOS-lab", "internalVersion": "4.27.3F-26379303.4273F", "memTotal": 2004568, "memFree": 89004, "version": "4.27.3F"}
-        ],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Device has reported a high memory usage - Expected: < 75% Actual: 95.56%"]},
-    },
-    (VerifyFileSystemUtilization, "success"): {
-        "eos_data": [
-            (
-                "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda2       3.9G  988M  2.9G  26% /mnt/flash\nnone            294M   78M  217M  27% /\n"
-                "none            294M   78M  217M  27% /.overlay\n/dev/loop0      461M  461M     0 100% /rootfs-i386\n"
-            )
-        ],
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyFileSystemUtilization, "failure"): {
-        "eos_data": [
-            (
-                "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda2       3.9G  988M  2.9G  84% /mnt/flash\nnone            294M   78M  217M  27% /\n"
-                "none            294M   78M  217M  84% /.overlay\n/dev/loop0      461M  461M     0 100% /rootfs-i386\n"
-            )
-        ],
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
-                "Mount point: /dev/sda2       3.9G  988M  2.9G  84% /mnt/flash - Higher disk space utilization - Expected: 75% Actual: 84%",
-                "Mount point: none            294M   78M  217M  84% /.overlay - Higher disk space utilization - Expected: 75% Actual: 84%",
+                "Mount point /dev/sda2       3.9G  988M  2.9G  84% /mnt/flash is higher than 75%: reported 84%",
+                "Mount point none            294M   78M  217M  84% /.overlay is higher than 75%: reported 84%",
             ],
         },
     },
-    (VerifyNTP, "success"): {"eos_data": ["synchronised\npoll interval unknown\n"], "expected": {"result": AntaTestStatus.SUCCESS}},
-    (VerifyNTP, "failure"): {
-        "eos_data": ["unsynchronised\npoll interval unknown\n"],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["NTP status mismatch - Expected: synchronised Actual: unsynchronised"]},
+    {
+        "name": "success",
+        "test": VerifyNTP,
+        "eos_data": [
+            """synchronised
+poll interval unknown
+""",
+        ],
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyNTPAssociations, "success"): {
+    {
+        "name": "failure",
+        "test": VerifyNTP,
+        "eos_data": [
+            """unsynchronised
+poll interval unknown
+""",
+        ],
+        "inputs": None,
+        "expected": {"result": "failure", "messages": ["The device is not synchronized with the configured NTP server(s): 'unsynchronised'"]},
+    },
+    {
+        "name": "success",
+        "test": VerifyNTPAssociations,
         "eos_data": [
             {
                 "peers": {
-                    "1.1.1.1": {"condition": "sys.peer", "peerIpAddr": "1.1.1.1", "stratumLevel": 1},
-                    "2.2.2.2": {"condition": "candidate", "peerIpAddr": "2.2.2.2", "stratumLevel": 2},
-                    "3.3.3.3": {"condition": "candidate", "peerIpAddr": "3.3.3.3", "stratumLevel": 2},
+                    "1.1.1.1": {
+                        "condition": "sys.peer",
+                        "peerIpAddr": "1.1.1.1",
+                        "stratumLevel": 1,
+                    },
+                    "2.2.2.2": {
+                        "condition": "candidate",
+                        "peerIpAddr": "2.2.2.2",
+                        "stratumLevel": 2,
+                    },
+                    "3.3.3.3": {
+                        "condition": "candidate",
+                        "peerIpAddr": "3.3.3.3",
+                        "stratumLevel": 2,
+                    },
                 }
             }
         ],
@@ -388,15 +311,29 @@ DATA: AntaUnitTestData = {
                 {"server_address": "3.3.3.3", "stratum": 2},
             ]
         },
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyNTPAssociations, "success-pool-name"): {
+    {
+        "name": "success-pool-name",
+        "test": VerifyNTPAssociations,
         "eos_data": [
             {
                 "peers": {
-                    "1.ntp.networks.com": {"condition": "sys.peer", "peerIpAddr": "1.1.1.1", "stratumLevel": 1},
-                    "2.ntp.networks.com": {"condition": "candidate", "peerIpAddr": "2.2.2.2", "stratumLevel": 2},
-                    "3.ntp.networks.com": {"condition": "candidate", "peerIpAddr": "3.3.3.3", "stratumLevel": 2},
+                    "1.ntp.networks.com": {
+                        "condition": "sys.peer",
+                        "peerIpAddr": "1.1.1.1",
+                        "stratumLevel": 1,
+                    },
+                    "2.ntp.networks.com": {
+                        "condition": "candidate",
+                        "peerIpAddr": "2.2.2.2",
+                        "stratumLevel": 2,
+                    },
+                    "3.ntp.networks.com": {
+                        "condition": "candidate",
+                        "peerIpAddr": "3.3.3.3",
+                        "stratumLevel": 2,
+                    },
                 }
             }
         ],
@@ -407,46 +344,29 @@ DATA: AntaUnitTestData = {
                 {"server_address": "3.ntp.networks.com", "stratum": 2},
             ]
         },
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyNTPAssociations, "success-ntp-pool-as-input"): {
+    {
+        "name": "success-ip-dns",
+        "test": VerifyNTPAssociations,
         "eos_data": [
             {
                 "peers": {
-                    "1.1.1.1": {"condition": "sys.peer", "peerIpAddr": "1.1.1.1", "stratumLevel": 1},
-                    "2.2.2.2": {"condition": "candidate", "peerIpAddr": "2.2.2.2", "stratumLevel": 2},
-                    "3.3.3.3": {"condition": "candidate", "peerIpAddr": "3.3.3.3", "stratumLevel": 2},
-                }
-            }
-        ],
-        "inputs": {"ntp_pool": {"server_addresses": ["1.1.1.1", "2.2.2.2", "3.3.3.3"], "preferred_stratum_range": [1, 2]}},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyNTPAssociations, "success-ntp-pool-hostname"): {
-        "eos_data": [
-            {
-                "peers": {
-                    "itsys-ntp010p.aristanetworks.com": {"condition": "sys.peer", "peerIpAddr": "1.1.1.1", "stratumLevel": 1},
-                    "itsys-ntp011p.aristanetworks.com": {"condition": "candidate", "peerIpAddr": "2.2.2.2", "stratumLevel": 2},
-                    "itsys-ntp012p.aristanetworks.com": {"condition": "candidate", "peerIpAddr": "3.3.3.3", "stratumLevel": 2},
-                }
-            }
-        ],
-        "inputs": {
-            "ntp_pool": {
-                "server_addresses": ["itsys-ntp010p.aristanetworks.com", "itsys-ntp011p.aristanetworks.com", "itsys-ntp012p.aristanetworks.com"],
-                "preferred_stratum_range": [1, 2],
-            }
-        },
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyNTPAssociations, "success-ip-dns"): {
-        "eos_data": [
-            {
-                "peers": {
-                    "1.1.1.1 (1.ntp.networks.com)": {"condition": "sys.peer", "peerIpAddr": "1.1.1.1", "stratumLevel": 1},
-                    "2.2.2.2 (2.ntp.networks.com)": {"condition": "candidate", "peerIpAddr": "2.2.2.2", "stratumLevel": 2},
-                    "3.3.3.3 (3.ntp.networks.com)": {"condition": "candidate", "peerIpAddr": "3.3.3.3", "stratumLevel": 2},
+                    "1.1.1.1 (1.ntp.networks.com)": {
+                        "condition": "sys.peer",
+                        "peerIpAddr": "1.1.1.1",
+                        "stratumLevel": 1,
+                    },
+                    "2.2.2.2 (2.ntp.networks.com)": {
+                        "condition": "candidate",
+                        "peerIpAddr": "2.2.2.2",
+                        "stratumLevel": 2,
+                    },
+                    "3.3.3.3 (3.ntp.networks.com)": {
+                        "condition": "candidate",
+                        "peerIpAddr": "3.3.3.3",
+                        "stratumLevel": 2,
+                    },
                 }
             }
         ],
@@ -457,15 +377,29 @@ DATA: AntaUnitTestData = {
                 {"server_address": "3.3.3.3", "stratum": 2},
             ]
         },
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyNTPAssociations, "failure-ntp-server"): {
+    {
+        "name": "failure",
+        "test": VerifyNTPAssociations,
         "eos_data": [
             {
                 "peers": {
-                    "1.1.1.1": {"condition": "candidate", "peerIpAddr": "1.1.1.1", "stratumLevel": 2},
-                    "2.2.2.2": {"condition": "sys.peer", "peerIpAddr": "2.2.2.2", "stratumLevel": 2},
-                    "3.3.3.3": {"condition": "sys.peer", "peerIpAddr": "3.3.3.3", "stratumLevel": 3},
+                    "1.1.1.1": {
+                        "condition": "candidate",
+                        "peerIpAddr": "1.1.1.1",
+                        "stratumLevel": 2,
+                    },
+                    "2.2.2.2": {
+                        "condition": "sys.peer",
+                        "peerIpAddr": "2.2.2.2",
+                        "stratumLevel": 2,
+                    },
+                    "3.3.3.3": {
+                        "condition": "sys.peer",
+                        "peerIpAddr": "3.3.3.3",
+                        "stratumLevel": 3,
+                    },
                 }
             }
         ],
@@ -477,17 +411,17 @@ DATA: AntaUnitTestData = {
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
-                "NTP Server: 1.1.1.1 Preferred: True Stratum: 1 - Incorrect condition - Expected: sys.peer Actual: candidate",
-                "NTP Server: 1.1.1.1 Preferred: True Stratum: 1 - Incorrect stratum level - Expected: 1 Actual: 2",
-                "NTP Server: 2.2.2.2 Preferred: False Stratum: 2 - Incorrect condition - Expected: candidate Actual: sys.peer",
-                "NTP Server: 3.3.3.3 Preferred: False Stratum: 2 - Incorrect condition - Expected: candidate Actual: sys.peer",
-                "NTP Server: 3.3.3.3 Preferred: False Stratum: 2 - Incorrect stratum level - Expected: 2 Actual: 3",
+                "1.1.1.1 (Preferred: True, Stratum: 1) - Bad association - Condition: candidate, Stratum: 2",
+                "2.2.2.2 (Preferred: False, Stratum: 2) - Bad association - Condition: sys.peer, Stratum: 2",
+                "3.3.3.3 (Preferred: False, Stratum: 2) - Bad association - Condition: sys.peer, Stratum: 3",
             ],
         },
     },
-    (VerifyNTPAssociations, "failure-no-peers"): {
+    {
+        "name": "failure-no-peers",
+        "test": VerifyNTPAssociations,
         "eos_data": [{"peers": {}}],
         "inputs": {
             "ntp_servers": [
@@ -496,14 +430,27 @@ DATA: AntaUnitTestData = {
                 {"server_address": "3.3.3.3", "stratum": 1},
             ]
         },
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["No NTP peers configured"]},
+        "expected": {
+            "result": "failure",
+            "messages": ["No NTP peers configured"],
+        },
     },
-    (VerifyNTPAssociations, "failure-one-peer-not-found"): {
+    {
+        "name": "failure-one-peer-not-found",
+        "test": VerifyNTPAssociations,
         "eos_data": [
             {
                 "peers": {
-                    "1.1.1.1": {"condition": "sys.peer", "peerIpAddr": "1.1.1.1", "stratumLevel": 1},
-                    "2.2.2.2": {"condition": "candidate", "peerIpAddr": "2.2.2.2", "stratumLevel": 1},
+                    "1.1.1.1": {
+                        "condition": "sys.peer",
+                        "peerIpAddr": "1.1.1.1",
+                        "stratumLevel": 1,
+                    },
+                    "2.2.2.2": {
+                        "condition": "candidate",
+                        "peerIpAddr": "2.2.2.2",
+                        "stratumLevel": 1,
+                    },
                 }
             }
         ],
@@ -514,10 +461,25 @@ DATA: AntaUnitTestData = {
                 {"server_address": "3.3.3.3", "stratum": 1},
             ]
         },
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["NTP Server: 3.3.3.3 Preferred: False Stratum: 1 - Not configured"]},
+        "expected": {
+            "result": "failure",
+            "messages": ["3.3.3.3 (Preferred: False, Stratum: 1) - Not configured"],
+        },
     },
-    (VerifyNTPAssociations, "failure-with-two-peers-not-found"): {
-        "eos_data": [{"peers": {"1.1.1.1": {"condition": "candidate", "peerIpAddr": "1.1.1.1", "stratumLevel": 1}}}],
+    {
+        "name": "failure-with-two-peers-not-found",
+        "test": VerifyNTPAssociations,
+        "eos_data": [
+            {
+                "peers": {
+                    "1.1.1.1": {
+                        "condition": "candidate",
+                        "peerIpAddr": "1.1.1.1",
+                        "stratumLevel": 1,
+                    }
+                }
+            }
+        ],
         "inputs": {
             "ntp_servers": [
                 {"server_address": "1.1.1.1", "preferred": True, "stratum": 1},
@@ -526,469 +488,12 @@ DATA: AntaUnitTestData = {
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
-                "NTP Server: 1.1.1.1 Preferred: True Stratum: 1 - Incorrect condition - Expected: sys.peer Actual: candidate",
-                "NTP Server: 2.2.2.2 Preferred: False Stratum: 1 - Not configured",
-                "NTP Server: 3.3.3.3 Preferred: False Stratum: 1 - Not configured",
+                "1.1.1.1 (Preferred: True, Stratum: 1) - Bad association - Condition: candidate, Stratum: 1",
+                "2.2.2.2 (Preferred: False, Stratum: 1) - Not configured",
+                "3.3.3.3 (Preferred: False, Stratum: 1) - Not configured",
             ],
         },
     },
-    (VerifyNTPAssociations, "failure-ntp-pool-as-input"): {
-        "eos_data": [
-            {
-                "peers": {
-                    "ntp1.pool": {"condition": "sys.peer", "peerIpAddr": "1.1.1.1", "stratumLevel": 1},
-                    "ntp2.pool": {"condition": "candidate", "peerIpAddr": "2.2.2.2", "stratumLevel": 2},
-                    "ntp3.pool": {"condition": "candidate", "peerIpAddr": "3.3.3.3", "stratumLevel": 2},
-                }
-            }
-        ],
-        "inputs": {"ntp_pool": {"server_addresses": ["1.1.1.1", "2.2.2.2"], "preferred_stratum_range": [1, 2]}},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["NTP Server: 3.3.3.3 Hostname: ntp3.pool - Associated but not part of the provided NTP pool"]},
-    },
-    (VerifyNTPAssociations, "failure-ntp-pool-as-input-bad-association"): {
-        "eos_data": [
-            {
-                "peers": {
-                    "ntp1.pool": {"condition": "sys.peer", "peerIpAddr": "1.1.1.1", "stratumLevel": 1},
-                    "ntp2.pool": {"condition": "candidate", "peerIpAddr": "2.2.2.2", "stratumLevel": 2},
-                    "ntp3.pool": {"condition": "reject", "peerIpAddr": "3.3.3.3", "stratumLevel": 3},
-                }
-            }
-        ],
-        "inputs": {"ntp_pool": {"server_addresses": ["1.1.1.1", "2.2.2.2", "3.3.3.3"], "preferred_stratum_range": [1, 2]}},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": [
-                "NTP Server: 3.3.3.3 Hostname: ntp3.pool - Incorrect condition  - Expected: sys.peer, candidate Actual: reject",
-                "NTP Server: 3.3.3.3 Hostname: ntp3.pool - Incorrect stratum level - Expected Stratum Range: 1 to 2 Actual: 3",
-            ],
-        },
-    },
-    (VerifyNTPAssociations, "failure-ntp-pool-hostname"): {
-        "eos_data": [
-            {
-                "peers": {
-                    "itsys-ntp010p.aristanetworks.com": {"condition": "sys.peer", "peerIpAddr": "1.1.1.1", "stratumLevel": 5},
-                    "itsys-ntp011p.aristanetworks.com": {"condition": "reject", "peerIpAddr": "2.2.2.2", "stratumLevel": 4},
-                    "itsys-ntp012p.aristanetworks.com": {"condition": "candidate", "peerIpAddr": "3.3.3.3", "stratumLevel": 2},
-                }
-            }
-        ],
-        "inputs": {"ntp_pool": {"server_addresses": ["itsys-ntp010p.aristanetworks.com", "itsys-ntp011p.aristanetworks.com"], "preferred_stratum_range": [1, 2]}},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": [
-                "NTP Server: 1.1.1.1 Hostname: itsys-ntp010p.aristanetworks.com - Incorrect stratum level - Expected Stratum Range: 1 to 2 Actual: 5",
-                "NTP Server: 2.2.2.2 Hostname: itsys-ntp011p.aristanetworks.com - Incorrect condition  - Expected: sys.peer, candidate Actual: reject",
-                "NTP Server: 2.2.2.2 Hostname: itsys-ntp011p.aristanetworks.com - Incorrect stratum level - Expected Stratum Range: 1 to 2 Actual: 4",
-                "NTP Server: 3.3.3.3 Hostname: itsys-ntp012p.aristanetworks.com - Associated but not part of the provided NTP pool",
-            ],
-        },
-    },
-    (VerifyMaintenance, "success-no-maintenance-configured"): {
-        "eos_data": [{"units": {}, "interfaces": {}, "vrfs": {}, "warnings": ["Maintenance Mode is disabled."]}],
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyMaintenance, "success-maintenance-configured-but-not-enabled"): {
-        "eos_data": [
-            {
-                "units": {
-                    "System": {
-                        "state": "active",
-                        "adminState": "active",
-                        "stateChangeTime": 0.0,
-                        "onBootMaintenance": False,
-                        "intfsViolatingTrafficThreshold": False,
-                        "aggInBpsRate": 0,
-                        "aggOutBpsRate": 0,
-                    }
-                },
-                "interfaces": {},
-                "vrfs": {},
-            }
-        ],
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyMaintenance, "success-multiple-units-but-not-enabled"): {
-        "eos_data": [
-            {
-                "units": {
-                    "mlag": {
-                        "state": "active",
-                        "adminState": "active",
-                        "stateChangeTime": 0.0,
-                        "onBootMaintenance": False,
-                        "intfsViolatingTrafficThreshold": False,
-                        "aggInBpsRate": 0,
-                        "aggOutBpsRate": 0,
-                    },
-                    "System": {
-                        "state": "active",
-                        "adminState": "active",
-                        "stateChangeTime": 0.0,
-                        "onBootMaintenance": False,
-                        "intfsViolatingTrafficThreshold": False,
-                        "aggInBpsRate": 0,
-                        "aggOutBpsRate": 0,
-                    },
-                },
-                "interfaces": {},
-                "vrfs": {},
-            }
-        ],
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyMaintenance, "failure-maintenance-enabled"): {
-        "eos_data": [
-            {
-                "units": {
-                    "mlag": {
-                        "state": "underMaintenance",
-                        "adminState": "underMaintenance",
-                        "stateChangeTime": 1741257120.9532886,
-                        "onBootMaintenance": False,
-                        "intfsViolatingTrafficThreshold": False,
-                        "aggInBpsRate": 0,
-                        "aggOutBpsRate": 0,
-                    },
-                    "System": {
-                        "state": "active",
-                        "adminState": "active",
-                        "stateChangeTime": 0.0,
-                        "onBootMaintenance": False,
-                        "intfsViolatingTrafficThreshold": False,
-                        "aggInBpsRate": 0,
-                        "aggOutBpsRate": 0,
-                    },
-                },
-                "interfaces": {},
-                "vrfs": {},
-            }
-        ],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Units under maintenance: 'mlag'", "Possible causes: 'Quiesce is configured'"]},
-    },
-    (VerifyMaintenance, "failure-multiple-reasons"): {
-        "eos_data": [
-            {
-                "units": {
-                    "mlag": {
-                        "state": "underMaintenance",
-                        "adminState": "underMaintenance",
-                        "stateChangeTime": 1741257120.9532895,
-                        "onBootMaintenance": False,
-                        "intfsViolatingTrafficThreshold": False,
-                        "aggInBpsRate": 0,
-                        "aggOutBpsRate": 0,
-                    },
-                    "System": {
-                        "state": "maintenanceModeEnter",
-                        "adminState": "underMaintenance",
-                        "stateChangeTime": 1741257669.7231765,
-                        "onBootMaintenance": False,
-                        "intfsViolatingTrafficThreshold": False,
-                        "aggInBpsRate": 0,
-                        "aggOutBpsRate": 0,
-                    },
-                },
-                "interfaces": {},
-                "vrfs": {},
-            }
-        ],
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Units under maintenance: 'mlag'", "Units entering maintenance: 'System'", "Possible causes: 'Quiesce is configured'"],
-        },
-    },
-    (VerifyMaintenance, "failure-onboot-maintenance"): {
-        "eos_data": [
-            {
-                "units": {
-                    "System": {
-                        "state": "underMaintenance",
-                        "adminState": "underMaintenance",
-                        "stateChangeTime": 1741258774.3756502,
-                        "onBootMaintenance": True,
-                        "intfsViolatingTrafficThreshold": False,
-                        "aggInBpsRate": 0,
-                        "aggOutBpsRate": 0,
-                    }
-                },
-                "interfaces": {},
-                "vrfs": {},
-            }
-        ],
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Units under maintenance: 'System'", "Possible causes: 'On-boot maintenance is configured, Quiesce is configured'"],
-        },
-    },
-    (VerifyMaintenance, "failure-entering-maintenance-interface-violation"): {
-        "eos_data": [
-            {
-                "units": {
-                    "System": {
-                        "state": "maintenanceModeEnter",
-                        "adminState": "underMaintenance",
-                        "stateChangeTime": 1741257669.7231765,
-                        "onBootMaintenance": False,
-                        "intfsViolatingTrafficThreshold": True,
-                        "aggInBpsRate": 0,
-                        "aggOutBpsRate": 0,
-                    }
-                },
-                "interfaces": {},
-                "vrfs": {},
-            }
-        ],
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Units entering maintenance: 'System'", "Possible causes: 'Interface traffic threshold violation, Quiesce is configured'"],
-        },
-    },
-    (VerifyFlashUtilization, "success-dual-supervisor"): {
-        "eos_data": [
-            {
-                "fileSystems": [
-                    {"currentFs": False, "size": 9852540, "free": 9727696, "fsType": "flash", "permission": "rw", "prefix": "file:"},
-                    {"currentFs": True, "size": 229572940, "free": 220819308, "fsType": "flash", "linuxFs": "ext4", "permission": "rw", "prefix": "flash:"},
-                ]
-            },
-            {"output": dumps({"fileSystems": [{"prefix": "flash:", "size": 229572940, "free": 221256196}]})},
-        ],
-        "inputs": {"max_utilization": 70, "check_peer_supervisor": True},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyFlashUtilization, "success-single-supervisor"): {
-        "eos_data": [
-            {
-                "fileSystems": [
-                    {"currentFs": False, "size": 9852540, "free": 9727696, "fsType": "flash", "permission": "rw", "prefix": "file:"},
-                    {"currentFs": True, "size": 229572940, "free": 220819308, "fsType": "flash", "linuxFs": "ext4", "permission": "rw", "prefix": "flash:"},
-                ]
-            }
-        ],
-        "inputs": {"max_utilization": 70},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyFlashUtilization, "failure-single-supervisor"): {
-        "eos_data": [
-            {
-                "fileSystems": [
-                    {"currentFs": False, "size": 9852540, "free": 9727696, "fsType": "flash", "permission": "rw", "prefix": "file:"},
-                    {"currentFs": True, "size": 229572940, "free": 65871824, "fsType": "flash", "linuxFs": "ext4", "permission": "rw", "prefix": "flash:"},
-                ]
-            }
-        ],
-        "inputs": {"max_utilization": 70},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Flash utilization above threshold - Expected: <= 70.0% Actual: 71.31%"],
-        },
-    },
-    (VerifyFlashUtilization, "failure-dual-supervisor"): {
-        "eos_data": [
-            {
-                "fileSystems": [
-                    {"currentFs": False, "size": 9852540, "free": 9727696, "fsType": "flash", "permission": "rw", "prefix": "file:"},
-                    {"currentFs": True, "size": 229572940, "free": 60871824, "fsType": "flash", "linuxFs": "ext4", "permission": "rw", "prefix": "flash:"},
-                ]
-            },
-            {"output": dumps({"fileSystems": [{"prefix": "flash:", "size": 229572940, "free": 55871824}]})},
-        ],
-        "inputs": {"max_utilization": 60, "check_peer_supervisor": True},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": [
-                "Active Supervisor - Flash utilization above threshold - Expected: <= 60.0% Actual: 73.48%",
-                "Standby Supervisor - Flash utilization above threshold - Expected: <= 60.0% Actual: 75.66%",
-            ],
-        },
-    },
-    (VerifyFlashUtilization, "failure-flash-drive-not-configured"): {
-        "eos_data": [
-            {
-                "fileSystems": [
-                    {"currentFs": False, "size": 9852540, "free": 9727696, "fsType": "flash", "permission": "rw", "prefix": "file:"},
-                    {"currentFs": True, "size": 229572940, "free": 60871824, "fsType": "flash", "linuxFs": "ext4", "permission": "rw", "prefix": "file"},
-                ]
-            },
-            {"output": dumps({"fileSystems": [{"prefix": "certificate:", "size": 229572940, "free": 55871824}]})},
-        ],
-        "inputs": {"max_utilization": 60, "check_peer_supervisor": True},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Active Supervisor - Flash not found", "Standby Supervisor - Flash not found"],
-        },
-    },
-    (VerifyFlashUtilization, "failure-bad-command-output"): {
-        "eos_data": [
-            {
-                "fileSystems": [
-                    {"currentFs": True, "size": 229572940, "free": 220819308, "fsType": "flash", "linuxFs": "ext4", "permission": "rw", "prefix": "flash:"},
-                ]
-            },
-            {"output": {"fileSystems": [{"prefix": "certificate:", "size": 229572940, "free": 55871824}]}},
-        ],
-        "inputs": {"max_utilization": 60, "check_peer_supervisor": True},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Standby Supervisor - Failed to parse command output"],
-        },
-    },
-    (VerifyFlashUtilization, "failure-single-system-flash-drive-not-configured"): {
-        "eos_data": [
-            {
-                "fileSystems": [
-                    {"currentFs": False, "size": 9852540, "free": 9727696, "fsType": "flash", "permission": "rw", "prefix": "file:"},
-                    {"currentFs": True, "size": 229572940, "free": 60871824, "fsType": "flash", "linuxFs": "ext4", "permission": "rw", "prefix": "file"},
-                ]
-            },
-        ],
-        "inputs": {"max_utilization": 60},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Flash not found"],
-        },
-    },
-    (VerifyFlashUtilization, "failure-single-system-flash-size-0"): {
-        "eos_data": [
-            {
-                "fileSystems": [
-                    {"currentFs": False, "size": 0, "free": 9727696, "fsType": "flash", "permission": "rw", "prefix": "flash:"},
-                ]
-            },
-        ],
-        "inputs": {"max_utilization": 60},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Flash reported a size of 0"],
-        },
-    },
-    (VerifyFilePresence, "success"): {
-        "eos_data": [
-            {
-                "urls": {
-                    "flash:/": {
-                        "entries": {
-                            "2025_01_06.cfg": {
-                                "permissions": "-rw-",
-                            },
-                            "2025_01_07.cfg": {
-                                "permissions": "-rw-",
-                            },
-                            "script.py": {
-                                "permissions": "-rw-",
-                            },
-                        }
-                    }
-                }
-            },
-            {
-                "urls": {
-                    "supervisor-peer:/mnt/flash": {
-                        "entries": {
-                            "2025_01_06.cfg": {
-                                "permissions": "-rw-",
-                            },
-                            "2025_01_07.cfg": {
-                                "permissions": "-rw-",
-                            },
-                            "script.py": {
-                                "permissions": "-rw-",
-                            },
-                        }
-                    }
-                }
-            },
-        ],
-        "inputs": {"filenames": ["script.py"], "check_peer_supervisor": True},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyFilePresence, "success-primary-supervisor"): {
-        "eos_data": [
-            {
-                "urls": {
-                    "flash:/": {
-                        "entries": {
-                            "2025_01_06.cfg": {
-                                "permissions": "-rw-",
-                            },
-                            "2025_01_07.cfg": {
-                                "permissions": "-rw-",
-                            },
-                            "script.py": {
-                                "permissions": "-rw-",
-                            },
-                        }
-                    }
-                }
-            }
-        ],
-        "inputs": {"filenames": ["script.py"]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyFilePresence, "failure"): {
-        "eos_data": [
-            {
-                "urls": {
-                    "flash:/": {
-                        "entries": {
-                            "2025_01_06.cfg": {
-                                "permissions": "-rw-",
-                            },
-                            "2025_01_07.cfg": {
-                                "permissions": "-rw-",
-                            },
-                        }
-                    }
-                }
-            },
-            {
-                "urls": {
-                    "supervisor-peer:/mnt/flash": {
-                        "entries": {
-                            "2025_01_06.cfg": {
-                                "permissions": "-rw-",
-                            },
-                            "2025_01_07.cfg": {
-                                "permissions": "-rw-",
-                            },
-                        }
-                    }
-                }
-            },
-        ],
-        "inputs": {"filenames": ["latency_script.py"], "check_peer_supervisor": True},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["File: latency_script.py - Not found", "File: latency_script.py - Not found on standby supervisor"],
-        },
-    },
-    (VerifyFilePresence, "failure-primary-supervisor"): {
-        "eos_data": [
-            {
-                "urls": {
-                    "flash:/": {
-                        "entries": {
-                            "2025_01_06.cfg": {
-                                "permissions": "-rw-",
-                            },
-                            "2025_01_07.cfg": {
-                                "permissions": "-rw-",
-                            },
-                        }
-                    }
-                }
-            }
-        ],
-        "inputs": {"filenames": ["latency_script.py"]},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": [
-                "File: latency_script.py - Not found",
-            ],
-        },
-    },
-}
+]

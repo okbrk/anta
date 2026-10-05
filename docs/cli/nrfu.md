@@ -1,15 +1,8 @@
 ---
-title: Execute Network Readiness For Use (NRFU) Testing
-hide:
-  - tags
-tags:
-  - CLI
-  - NRFU
-  - Reports
+anta_title: Execute Network Readiness For Use (NRFU) Testing
 ---
-
 <!--
-  ~ Copyright (c) 2023-2026 Arista Networks, Inc.
+  ~ Copyright (c) 2023-2025 Arista Networks, Inc.
   ~ Use of this source code is governed by the Apache License 2.0
   ~ that can be found in the LICENSE file.
   -->
@@ -23,8 +16,6 @@ ANTA provides a set of commands for performing NRFU tests on devices. These comm
 - [CSV report](#performing-nrfu-and-saving-results-in-a-csv-file)
 - [Markdown report](#performing-nrfu-and-saving-results-in-a-markdown-file)
 
-See [ANTA Test Reports](../reports/anta.md) for help choosing a format and for the corresponding Python reporter APIs.
-
 ## NRFU Command overview
 
 ```bash
@@ -35,8 +26,8 @@ See [ANTA Test Reports](../reports/anta.md) for help choosing a format and for t
 
 All commands under the `anta nrfu` namespace require a catalog yaml file specified with the `--catalog` option and a device inventory file specified with the `--inventory` option.
 
-!!! tip
-    Issuing the command `anta nrfu` will run `anta nrfu table` without any option.
+> [!TIP]
+> Issuing the command `anta nrfu` will run `anta nrfu table` without any option.
 
 ### Tag management
 
@@ -57,16 +48,21 @@ The `text` subcommand provides a straightforward text report for each test execu
 ### Command overview
 
 ```bash
---8<-- "anta_nrfu_text_help.txt"
+Usage: anta nrfu text [OPTIONS]
+
+  ANTA command to check network states with text result.
+
+Options:
+  --help  Show this message and exit.
 ```
 
 ### Example
 
 ```bash
-anta nrfu --device dc1-leaf1a text
+anta nrfu --device DC1-LEAF1A text
 ```
 
-![anta nrfu text results](../imgs/anta_nrfu_device_dc1leaf1a_text.svg){ class="img_center" loading=lazy width="1600" }
+![anta nrfu text results](../imgs/anta-nrfu-text-output.png){ loading=lazy width="1600" }
 
 ## Performing NRFU with table rendering
 
@@ -75,18 +71,24 @@ The `table` command under the `anta nrfu` namespace offers a clear and organized
 ### Command overview
 
 ```bash
---8<-- "anta_nrfu_table_help.txt"
+Usage: anta nrfu table [OPTIONS]
+
+  ANTA command to check network states with table result.
+
+Options:
+  --group-by [device|test]  Group result by test or device.
+  --help                    Show this message and exit.
 ```
 
-The `--group-by` option shows a summarized view of the test results per host or per test.
+The `--group-by` option show a summarized view of the test results per host or per test.
 
 ### Examples
 
 ```bash
-anta nrfu --tags leaf table
+anta nrfu --tags LEAF table
 ```
 
-![anta nrfu table results](../imgs/anta_nrfu_tags_leaf_table.svg){ class="img_center" loading=lazy width="1600" }
+![anta nrfu table results](../imgs/anta-nrfu-table-output.png){ loading=lazy width="1600" }
 
 For larger setups, you can also group the results by host or test to get a summarized view:
 
@@ -94,27 +96,27 @@ For larger setups, you can also group the results by host or test to get a summa
 anta nrfu table --group-by device
 ```
 
-![anta nrfu table grouped by device](../imgs/anta_nrfu_table_groupby_device.svg){ class="img_center" loading=lazy width="1600" }
+![$1anta nrfu table group_by_host_output](../imgs/anta-nrfu-table-group-by-host-output.png){ loading=lazy width="1600" }
 
 ```bash
 anta nrfu table --group-by test
 ```
 
-![anta nrfu table grouped by test](../imgs/anta_nrfu_table_groupby_test.svg){ class="img_center" loading=lazy width="1600" }
+![$1anta nrfu table group_by_test_output](../imgs/anta-nrfu-table-group-by-test-output.png){ loading=lazy width="1600" }
 
 To get more specific information, it is possible to filter on a single device or a single test:
 
 ```bash
-anta nrfu --device dc1-spine1 table
+anta nrfu --device spine1 table
 ```
 
-![anta nrfu table filtered by device](../imgs/anta_nrfu_device_dc1spine1_table.svg){ class="img_center" loading=lazy width="1600" }
+![$1anta nrfu table filter_host_output](../imgs/anta-nrfu-table-filter-host-output.png){ loading=lazy width="1600" }
 
 ```bash
 anta nrfu --test VerifyZeroTouch table
 ```
 
-![anta nrfu table filtered by test](../imgs/anta_nrfu_test_VerifyZeroTouch_table.svg){ class="img_center" loading=lazy width="1600" }
+![$1anta nrfu table filter_test_output](../imgs/anta-nrfu-table-filter-test-output.png){ loading=lazy width="1600" }
 
 ## Performing NRFU with JSON rendering
 
@@ -123,7 +125,15 @@ The JSON rendering command in NRFU testing will generate an output of all test r
 ### Command overview
 
 ```bash
---8<-- "anta_nrfu_json_help.txt"
+anta nrfu json --help
+Usage: anta nrfu json [OPTIONS]
+
+  ANTA command to check network state with JSON result.
+
+Options:
+  -o, --output FILE  Path to save report as a JSON file  [env var:
+                     ANTA_NRFU_JSON_OUTPUT]
+  --help             Show this message and exit.
 ```
 
 The `--output` option allows you to save the JSON report as a file. If specified, no output will be displayed in the terminal. This is useful for further processing or integration with other tools.
@@ -131,10 +141,10 @@ The `--output` option allows you to save the JSON report as a file. If specified
 ### Example
 
 ```bash
-anta nrfu --tags leaf json
+anta nrfu --tags LEAF json
 ```
 
-![anta nrfu json results](../imgs/anta_nrfu_tags_leaf_json.svg){ class="img_center" loading=lazy width="1600" }
+![$1anta nrfu json results](../imgs/anta-nrfu-json-output.png){ loading=lazy width="1600" }
 
 ## Performing NRFU and saving results in a CSV file
 
@@ -143,16 +153,20 @@ The `csv` command in NRFU testing is useful for generating a CSV file with all t
 ### Command overview
 
 ```bash
---8<-- "anta_nrfu_csv_help.txt"
+anta nrfu csv --help
+Usage: anta nrfu csv [OPTIONS]
+
+  ANTA command to check network states with CSV result.
+
+Options:
+  --csv-output FILE  Path to save report as a CSV file  [env var:
+                     ANTA_NRFU_CSV_CSV_OUTPUT]
+  --help             Show this message and exit.
 ```
 
 ### Example
 
-```bash
-anta nrfu --tags leaf csv --csv-output nrfu.csv
-```
-
-![anta nrfu csv results](../imgs/anta_nrfu_tags_leaf_csv_csvoutput_nrfucsv.svg){ class="img_center" loading=lazy width="1600" }
+![anta nrfu csv results](../imgs/anta_nrfu_csv.png){ loading=lazy width="1600" }
 
 ## Performing NRFU and saving results in a Markdown file
 
@@ -161,16 +175,21 @@ The `md-report` command in NRFU testing generates a comprehensive Markdown repor
 ### Command overview
 
 ```bash
---8<-- "anta_nrfu_mdreport_help.txt"
+anta nrfu md-report --help
+
+Usage: anta nrfu md-report [OPTIONS]
+
+  ANTA command to check network state with Markdown report.
+
+Options:
+  --md-output FILE  Path to save the report as a Markdown file  [env var:
+                    ANTA_NRFU_MD_REPORT_MD_OUTPUT; required]
+  --help            Show this message and exit.
 ```
 
 ### Example
 
-```bash
-anta nrfu --tags leaf md-report --md-output nrfu.md
-```
-
-![anta nrfu md-report results](../imgs/anta_nrfu_tags_leaf_mdreport_mdoutput_nrfumd.svg){ class="img_center" loading=lazy width="1600" }
+![anta nrfu md-report results](../imgs/anta-nrfu-md-report-output.png){ loading=lazy width="1600" }
 
 ## Performing NRFU with custom reports
 
@@ -179,7 +198,17 @@ ANTA offers a CLI option for creating custom reports. This leverages the Jinja2 
 ### Command overview
 
 ```bash
---8<-- "anta_nrfu_tplreport_help.txt"
+anta nrfu tpl-report --help
+Usage: anta nrfu tpl-report [OPTIONS]
+
+  ANTA command to check network state with templated report
+
+Options:
+  -tpl, --template FILE  Path to the template to use for the report  [env var:
+                         ANTA_NRFU_TPL_REPORT_TEMPLATE; required]
+  -o, --output FILE      Path to save report as a file  [env var:
+                         ANTA_NRFU_TPL_REPORT_OUTPUT]
+  --help                 Show this message and exit.
 ```
 
 The `--template` option is used to specify the Jinja2 template file for generating the custom report.
@@ -189,40 +218,39 @@ The `--output` option allows you to choose the path where the final report will 
 ### Example
 
 ```bash
-anta nrfu --tags leaf tpl-report --template ./custom_template.j2
+anta nrfu --tags LEAF tpl-report --template ./custom_template.j2
 ```
 
-![anta nrfu custom report results](../imgs/anta_nrfu_tags_leaf_tplreport_template__custom_templatej2.svg){ class="img_center" loading=lazy width="1600" }
+![$1anta nrfu tpl_results](../imgs/anta-nrfu-tpl-report-output.png){ loading=lazy width="1600" }
 
 The template `./custom_template.j2` is a simple Jinja2 template:
 
 ```j2
 {% for d in data %}
-* {{ d.test }} is [{{ "green" if d.result == "success" else "red" }}]{{ d.result | upper }}[/] for {{ d.name }}
+* {{ d.test }} is [green]{{ d.result | upper}}[/green] for {{ d.name }}
 {% endfor %}
 ```
 
-The Jinja2 template has access to all `TestResult` elements and their values, as described in this [documentation](../api/result.md#anta.result_manager.models.TestResult).
+The Jinja2 template has access to all `TestResult` elements and their values, as described in this [documentation](../api/result_manager_models.md#anta.result_manager.models.TestResult).
 
 You can also save the report result to a file using the `--output` option:
 
 ```bash
-anta nrfu --tags leaf tpl-report --template ./custom_template.j2 --output nrfu-tpl-report.txt
+anta nrfu --tags LEAF tpl-report --template ./custom_template.j2 --output nrfu-tpl-report.txt
 ```
 
-An excerpt of the resulting file might look like this:
+The resulting output might look like this:
 
 ```bash
 cat nrfu-tpl-report.txt
-* VerifyMlagInterfaces is [red]FAILURE[/] for dc1-leaf1a
-* VerifyEOSVersion is [green]SUCCESS[/] for dc1-leaf1a
-* VerifyMlagConfigSanity is [green]SUCCESS[/] for dc1-leaf1a
-* VerifyUptime is [green]SUCCESS[/] for dc1-leaf1a
-... 44 results omitted ...
+* VerifyMlagStatus is [green]SUCCESS[/green] for DC1-LEAF1A
+* VerifyMlagInterfaces is [green]SUCCESS[/green] for DC1-LEAF1A
+* VerifyMlagConfigSanity is [green]SUCCESS[/green] for DC1-LEAF1A
+* VerifyMlagReloadDelay is [green]SUCCESS[/green] for DC1-LEAF1A
 ```
 
 ## Dry-run mode
 
 It is possible to run `anta nrfu --dry-run` to execute ANTA up to the point where it should communicate with the network to execute the tests. When using `--dry-run`, all inventory devices are assumed to be online. This can be useful to check how many tests would be run using the catalog and inventory.
 
-![anta nrfu dry-run results](../imgs/anta_nrfu_dryrun.svg){ class="img_center" loading=lazy width="1600" }
+![$1anta nrfu dry_run](../imgs/anta_nrfu___dry_run.svg){ loading=lazy width="1600" }

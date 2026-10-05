@@ -1,9 +1,3 @@
-<!--
-  ~ Copyright (c) 2026 Arista Networks, Inc.
-  ~ Use of this source code is governed by the Apache License 2.0
-  ~ that can be found in the LICENSE file.
-  -->
-
 # Notes
 
 Notes regarding how to release anta package
@@ -11,6 +5,8 @@ Notes regarding how to release anta package
 ## Package requirements
 
 - `bumpver`
+- `build`
+- `twine`
 
 Also, [Github CLI](https://cli.github.com/) can be helpful and is recommended
 
@@ -18,26 +14,24 @@ Also, [Github CLI](https://cli.github.com/) can be helpful and is recommended
 
 In a branch specific for this, use the `bumpver` tool.
 It is configured to update:
-
-- pyproject.toml
-- docs/contribution.md
-- docs/requirements-and-installation.md
+* pyproject.toml
+* docs/contribution.md
+* docs/requirements-and-installation.md
 
 For instance to bump a patch version:
-
-```bash
+```
 bumpver update --patch
 ```
 
 and for a minor version
 
-```bash
+```
 bumpver update --minor
 ```
 
 Tip: It is possible to check what the changes would be using `--dry`
 
-```bash
+```
 bumpver update --minor --dry
 ```
 
@@ -47,24 +41,63 @@ Create the release on Github with the appropriate tag `vx.x.x`
 
 ## Release version `x.x.x`
 
+> [!IMPORTANT]
+> TODO - make this a github workflow
+
 `x.x.x` is the version to be released
 
-When publishing a version the workflow `release.yml` is run.
+This is to be executed at the top of the repo
 
-The workflow works as follow:
+1. Checkout the latest version of `main` with the correct tag for the release
+2. Create a new branch for release
 
-1. First build the wheel and the sdist for the package.
-2. Release to test pypi using trusted publisher (it needs to be approved in GitHub UI).
-3. Download the wheel from test pypi and run the tests by checking them out (testing on Linux, OSX and Windows).
-4. Release to Pypi (it needs to be approved in Github UI).
-5. Build and publish the doc.
-6. Publish docker containers.
+   ```bash
+   git switch -c rel/vx.x.x
+   ```
+3. [Optional] Clean dist if required
+4. Build the package locally
 
-### Tips
+   ```bash
+   python -m build
+   ```
+5. Check the package with `twine` (replace with your vesion)
 
-#### Install from test pypi to run local tests between steps 2 and 4
+    ```bash
+    twine check dist/*
+    ```
+6. Upload the package to test.pypi
+
+    ```bash
+    twine upload -r testpypi dist/anta-x.x.x.*
+    ```
+7. Verify the package by installing it in a local venv and checking it installs
+   and run correctly (run the tests)
 
    ```bash
    # In a brand new venv
-   pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple --no-cache anta[cli]
+   pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple --no-cache anta
    ```
+8. Push to anta repository and create a Pull Request
+
+    ```bash
+    git push origin HEAD
+    gh pr create --title 'bump: ANTA vx.x.x'
+    ```
+9. Merge PR after review and wait for [workflow](https://github.com/aristanetworks/anta/actions/workflows/release.yml) to be executed.
+
+   ```bash
+   gh pr merge --squash
+   ```
+
+10. Like 7 but for normal pypi
+
+    ```bash
+    # In a brand new venv
+    pip install anta
+    ```
+
+11. Test installed version
+
+    ```bash
+    anta --version
+    ```

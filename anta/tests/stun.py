@@ -1,10 +1,10 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Test functions related to various STUN settings."""
 
-# Pyright does not understand AntaTest.Input typing
-# pyright: reportAttributeAccessIssue=false
+# Mypy does not understand AntaTest.Input typing
+# mypy: disable-error-code=attr-defined
 from __future__ import annotations
 
 from typing import ClassVar
@@ -69,14 +69,14 @@ class VerifyStunClientTranslation(AntaTest):
         self.result.is_success()
 
         # Iterate over each command output and corresponding client input
-        for command, client_input in zip(self.instance_commands, self.inputs.stun_clients, strict=False):
+        for command, client_input in zip(self.instance_commands, self.inputs.stun_clients):
             bindings = command.json_output["bindings"]
             input_public_address = client_input.public_address
             input_public_port = client_input.public_port
 
             # If no bindings are found for the STUN client, mark the test as a failure and continue with the next client
             if not bindings:
-                self.result.is_failure(f"{client_input} - STUN client translation not found")
+                self.result.is_failure(f"{client_input} - STUN client translation not found.")
                 continue
 
             # Extract the transaction ID from the bindings
@@ -145,10 +145,10 @@ class VerifyStunServer(AntaTest):
         not_running = command_output.get("pid") == 0
 
         if status_disabled and not_running:
-            self.result.is_failure("STUN server status is disabled and not running")
+            self.result.is_failure("STUN server status is disabled and not running.")
         elif status_disabled:
-            self.result.is_failure("STUN server status is disabled")
+            self.result.is_failure("STUN server status is disabled.")
         elif not_running:
-            self.result.is_failure("STUN server is not running")
+            self.result.is_failure("STUN server is not running.")
         else:
             self.result.is_success()

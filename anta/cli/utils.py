@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Utils functions to use with anta.cli module."""
@@ -8,9 +8,8 @@ from __future__ import annotations
 import enum
 import functools
 import logging
-import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Callable
 
 import click
 from yaml import YAMLError
@@ -19,23 +18,11 @@ from anta.catalog import AntaCatalog
 from anta.inventory import AntaInventory
 from anta.inventory.exceptions import InventoryIncorrectSchemaError, InventoryRootKeyError
 from anta.logger import anta_log_exception
-from anta.result_manager.models import AntaTestStatus
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from click import Option
 
-if sys.version_info >= (3, 12):
-    from typing import override
-else:
-    from typing_extensions import override
-
 logger = logging.getLogger(__name__)
-R = TypeVar("R")
-
-_HIDE_STATUS: list[str] = list(AntaTestStatus)
-_HIDE_STATUS.remove("unset")
 
 
 class ExitCode(enum.IntEnum):
@@ -53,7 +40,8 @@ class ExitCode(enum.IntEnum):
     TESTS_FAILED = 4
 
 
-def parse_tags(_ctx: click.Context, _param: Option, value: str | None) -> set[str] | None:
+def parse_tags(ctx: click.Context, param: Option, value: str | None) -> set[str] | None:
+    # ruff: noqa: ARG001
     """Click option callback to parse an ANTA inventory tags."""
     if value is not None:
         return set(value.split(",")) if "," in value else {value}
@@ -63,14 +51,14 @@ def parse_tags(_ctx: click.Context, _param: Option, value: str | None) -> set[st
 def exit_with_code(ctx: click.Context) -> None:
     """Exit the Click application with an exit code.
 
-    This function determines the global test status to be either `unset`, `skipped`, `success`, `failure` or `error`
-    from the `ResultManager` instance.
+    This function determines the global test status to be either `unset`, `skipped`, `success` or `error`
+    from the `ResultManger` instance.
     If flag `ignore_error` is set, the `error` status will be ignored in all the tests.
     If flag `ignore_status` is set, the exit code will always be 0.
     Exit the application with the following exit code:
         * 0 if `ignore_status` is `True` or global test status is `unset`, `skipped` or `success`
-        * 3 if status is `error`
-        * 4 if status is `failure`.
+        * 1 if status is `failure`
+        * 2 if status is `error`.
 
     Parameters
     ----------
@@ -103,10 +91,8 @@ class AliasedGroup(click.Group):
     From Click documentation.
     """
 
-    # Adding noqa because https://github.com/astral-sh/ruff/issues/5474, same for pylint
-    @override  # noqa: RET503
-    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | click.Group | None:  # pylint: disable=R1710
-        """Try to find a command name based on a prefix."""
+    def get_command(self, ctx: click.Context, cmd_name: str) -> Any:
+        """Todo: document code."""
         rv = click.Group.get_command(self, ctx, cmd_name)
         if rv is not None:
             return rv
@@ -116,63 +102,18 @@ class AliasedGroup(click.Group):
         if len(matches) == 1:
             return click.Group.get_command(self, ctx, matches[0])
         ctx.fail(f"Too many matches: {', '.join(sorted(matches))}")
+        return None
 
-    @override
-    def resolve_command(self, ctx: click.Context, args: list[str]) -> tuple[str | None, click.Command | None, list[str]]:
-        """Return the full command name as first tuple element."""
+    def resolve_command(self, ctx: click.Context, args: Any) -> Any:
+        """Todo: document code."""
+        # always return the full command name
         _, cmd, args = super().resolve_command(ctx, args)
-        if not cmd or cmd.name is None:
-            return None, None, []
+        if not cmd:
+            return None, None, None
         return cmd.name, cmd, args
 
 
-def result_options(f: Callable[..., R]) -> Callable[..., R]:
-    """Click common options for filtering test results and determining the exit code."""
-    f = click.option(
-        "--hide",
-        default=None,
-        type=click.Choice(_HIDE_STATUS, case_sensitive=False),
-        multiple=True,
-        help="Hide results by type: success / failure / error / skipped.",
-        required=False,
-    )(f)
-    f = click.option(
-        "--ignore-error",
-        help="Ignore test errors when determining the exit code.",
-        show_envvar=True,
-        is_flag=True,
-        default=False,
-    )(f)
-    return click.option(
-        "--ignore-status",
-        help="Exit code will always be 0.",
-        show_envvar=True,
-        is_flag=True,
-        default=False,
-    )(f)
-
-
-def template_report_options(f: Callable[..., R]) -> Callable[..., R]:
-    """Click common options for template report commands."""
-    f = click.option(
-        "--output",
-        "-o",
-        type=click.Path(file_okay=True, dir_okay=False, exists=False, writable=True, path_type=Path),
-        show_envvar=True,
-        required=False,
-        help="Path to save report as a file",
-    )(f)
-    return click.option(
-        "--template",
-        "-tpl",
-        type=click.Path(file_okay=True, dir_okay=False, exists=True, readable=True, path_type=Path),
-        show_envvar=True,
-        required=True,
-        help="Path to the template to use for the report",
-    )(f)
-
-
-def core_options(f: Callable[..., R]) -> Callable[..., R]:
+def core_options(f: Callable[..., Any]) -> Callable[..., Any]:
     """Click common options when requiring an inventory to interact with devices."""
 
     @click.option(
@@ -222,7 +163,6 @@ def core_options(f: Callable[..., R]) -> Callable[..., R]:
         show_envvar=True,
         envvar="ANTA_TIMEOUT",
         show_default=True,
-        type=float,
     )
     @click.option(
         "--insecure",
@@ -243,14 +183,6 @@ def core_options(f: Callable[..., R]) -> Callable[..., R]:
         default=False,
     )
     @click.option(
-        "--use-session-auth/--no-session-auth",
-        help="Enable or explicitly disable eAPI session authentication globally. When unset, per-device inventory values apply.",
-        show_envvar=True,
-        envvar="ANTA_USE_SESSION_AUTH",
-        show_default=True,
-        default=None,
-    )
-    @click.option(
         "--inventory",
         "-i",
         help="Path to the inventory YAML file.",
@@ -259,19 +191,11 @@ def core_options(f: Callable[..., R]) -> Callable[..., R]:
         required=True,
         type=click.Path(file_okay=True, dir_okay=False, exists=True, readable=True, path_type=Path),
     )
-    @click.option(
-        "--inventory-format",
-        envvar="ANTA_INVENTORY_FORMAT",
-        show_envvar=True,
-        help="Format of the inventory file, either 'yaml' or 'json'",
-        default="yaml",
-        type=click.Choice(["yaml", "json"], case_sensitive=False),
-    )
     @click.pass_context
     @functools.wraps(f)
     def wrapper(
         ctx: click.Context,
-        *,
+        *args: tuple[Any],
         inventory: Path,
         username: str,
         password: str | None,
@@ -281,13 +205,11 @@ def core_options(f: Callable[..., R]) -> Callable[..., R]:
         timeout: float,
         insecure: bool,
         disable_cache: bool,
-        use_session_auth: bool | None,
-        inventory_format: Literal["json", "yaml"],
-        **kwargs: Any,  # noqa: ANN401
-    ) -> R:
+        **kwargs: dict[str, Any],
+    ) -> Any:
         # If help is invoke somewhere, do not parse inventory
         if ctx.obj.get("_anta_help"):
-            return f(inventory=None, **kwargs)
+            return f(*args, inventory=None, **kwargs)
         if prompt:
             # User asked for a password prompt
             if password is None:
@@ -295,12 +217,14 @@ def core_options(f: Callable[..., R]) -> Callable[..., R]:
                     "Please enter a password to connect to EOS",
                     type=str,
                     hide_input=True,
+                    confirmation_prompt=True,
                 )
             if enable and enable_password is None and click.confirm("Is a password required to enter EOS privileged EXEC mode?"):
                 enable_password = click.prompt(
                     "Please enter a password to enter EOS privileged EXEC mode",
                     type=str,
                     hide_input=True,
+                    confirmation_prompt=True,
                 )
         if password is None:
             msg = "EOS password needs to be provided by using either the '--password' option or the '--prompt' option."
@@ -318,18 +242,16 @@ def core_options(f: Callable[..., R]) -> Callable[..., R]:
                 timeout=timeout,
                 insecure=insecure,
                 disable_cache=disable_cache,
-                use_session_auth=use_session_auth,
-                file_format=inventory_format,
             )
         except (TypeError, ValueError, YAMLError, OSError, InventoryIncorrectSchemaError, InventoryRootKeyError) as e:
             anta_log_exception(e, f"Failed to parse the inventory: {inventory}", logger)
             ctx.exit(ExitCode.USAGE_ERROR)
-        return f(inventory=i, **kwargs)
+        return f(*args, inventory=i, **kwargs)
 
     return wrapper
 
 
-def inventory_options(f: Callable[..., R]) -> Callable[..., R]:
+def inventory_options(f: Callable[..., Any]) -> Callable[..., Any]:
     """Click common options when requiring an inventory to interact with devices."""
 
     @core_options
@@ -346,72 +268,62 @@ def inventory_options(f: Callable[..., R]) -> Callable[..., R]:
     @functools.wraps(f)
     def wrapper(
         ctx: click.Context,
+        *args: tuple[Any],
         tags: set[str] | None,
-        **kwargs: Any,  # noqa: ANN401
-    ) -> R:
+        **kwargs: dict[str, Any],
+    ) -> Any:
         # If help is invoke somewhere, do not parse inventory
         if ctx.obj.get("_anta_help"):
-            return f(tags=tags, **kwargs)
-        return f(tags=tags, **kwargs)
+            return f(*args, tags=tags, **kwargs)
+        return f(*args, tags=tags, **kwargs)
 
     return wrapper
 
 
-def catalog_options(*, required: bool = True) -> Callable[..., Callable[..., object]]:
+def catalog_options(f: Callable[..., Any]) -> Callable[..., Any]:
     """Click common options when requiring a test catalog to execute ANTA tests."""
 
-    def wrapper(f: Callable[..., object]) -> Callable[..., object]:
-        """Click common options when requiring a test catalog to execute ANTA tests."""
-
-        @click.option(
-            "--catalog",
-            "-c",
-            envvar="ANTA_CATALOG",
-            show_envvar=True,
-            help="Path to the test catalog file",
-            type=click.Path(
-                file_okay=True,
-                dir_okay=False,
-                exists=True,
-                readable=True,
-                path_type=Path,
-            ),
-            required=required,
-        )
-        @click.option(
-            "--catalog-format",
-            envvar="ANTA_CATALOG_FORMAT",
-            show_envvar=True,
-            help="Format of the catalog file, either 'yaml' or 'json'",
-            default="yaml",
-            type=click.Choice(["yaml", "json"], case_sensitive=False),
-        )
-        @click.pass_context
-        @functools.wraps(f)
-        def wrapper(
-            ctx: click.Context,
-            catalog: Path | None,
-            catalog_format: Literal["yaml", "json"],
-            **kwargs: Any,  # noqa: ANN401
-        ) -> object:
-            # If help is invoke somewhere, do not parse catalog
-            if ctx.obj.get("_anta_help"):
-                return f(catalog=None, **kwargs)
-            if not catalog and not required:
-                return f(catalog=None, **kwargs)
-            if not catalog:
-                # This should never happen
-                msg = "Missing catalog in inputs"
-                raise RuntimeError(msg)
-            try:
-                # the type checker needs help
-                file_format = cast('Literal["json", "yaml"]', catalog_format.lower())
-                c = AntaCatalog.parse(catalog, file_format=file_format)
-            except (TypeError, ValueError, YAMLError, OSError) as e:
-                anta_log_exception(e, f"Failed to parse the catalog: {catalog}", logger)
-                ctx.exit(ExitCode.USAGE_ERROR)
-            return f(catalog=c, **kwargs)
-
-        return wrapper
+    @click.option(
+        "--catalog",
+        "-c",
+        envvar="ANTA_CATALOG",
+        show_envvar=True,
+        help="Path to the test catalog file",
+        type=click.Path(
+            file_okay=True,
+            dir_okay=False,
+            exists=True,
+            readable=True,
+            path_type=Path,
+        ),
+        required=True,
+    )
+    @click.option(
+        "--catalog-format",
+        envvar="ANTA_CATALOG_FORMAT",
+        show_envvar=True,
+        help="Format of the catalog file, either 'yaml' or 'json'",
+        default="yaml",
+        type=click.Choice(["yaml", "json"], case_sensitive=False),
+    )
+    @click.pass_context
+    @functools.wraps(f)
+    def wrapper(
+        ctx: click.Context,
+        *args: tuple[Any],
+        catalog: Path,
+        catalog_format: str,
+        **kwargs: dict[str, Any],
+    ) -> Any:
+        # If help is invoke somewhere, do not parse catalog
+        if ctx.obj.get("_anta_help"):
+            return f(*args, catalog=None, **kwargs)
+        try:
+            file_format = catalog_format.lower()
+            c = AntaCatalog.parse(catalog, file_format=file_format)  # type: ignore[arg-type]
+        except (TypeError, ValueError, YAMLError, OSError) as e:
+            anta_log_exception(e, f"Failed to parse the catalog: {catalog}", logger)
+            ctx.exit(ExitCode.USAGE_ERROR)
+        return f(*args, catalog=c, **kwargs)
 
     return wrapper

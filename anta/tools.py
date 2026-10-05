@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Common functions used in ANTA tests."""
@@ -9,11 +9,9 @@ import cProfile
 import os
 import pstats
 import re
-from collections.abc import Callable, Coroutine, Sequence
-from datetime import datetime, timezone
-from functools import cache, wraps
+from functools import wraps
 from time import perf_counter
-from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, TypeVar, cast
 
 from anta.constants import ACRONYM_CATEGORIES
 from anta.custom_types import REGEXP_PATH_MARKERS
@@ -29,10 +27,7 @@ if TYPE_CHECKING:
     else:
         from typing_extensions import Self
 
-P = ParamSpec("P")
-T = TypeVar("T")
-AsyncFunc = Callable[P, Coroutine[Any, Any, T]]
-AsyncDecorator = Callable[[AsyncFunc], AsyncFunc]
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 def get_failed_logs(expected_output: dict[Any, Any], actual_output: dict[Any, Any]) -> str:
@@ -295,7 +290,7 @@ class Catchtime:
         """__enter__ method."""
         self.start = perf_counter()
         if self.logger and self.message:
-            self.logger.debug("%s ...", self.message)
+            self.logger.info("%s ...", self.message)
         return self
 
     def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None) -> None:
@@ -303,10 +298,10 @@ class Catchtime:
         self.raw_time = perf_counter() - self.start
         self.time = format_td(self.raw_time, 3)
         if self.logger and self.message:
-            self.logger.debug("%s completed in: %s.", self.message, self.time)
+            self.logger.info("%s completed in: %s.", self.message, self.time)
 
 
-def cprofile(sort_by: str = "cumtime") -> AsyncDecorator:
+def cprofile(sort_by: str = "cumtime") -> Callable[[F], F]:
     """Profile a function with cProfile.
 
     profile is conditionally enabled based on the presence of ANTA_CPROFILE environment variable.
@@ -323,14 +318,7 @@ def cprofile(sort_by: str = "cumtime") -> AsyncDecorator:
         The decorated function with conditional profiling.
     """
 
-    def _enable_profiler(cprofile_file: str | None) -> tuple[cProfile.Profile, str] | None:
-        if cprofile_file is not None:
-            profiler = cProfile.Profile()
-            profiler.enable()
-            return profiler, cprofile_file
-        return None
-
-    def decorator(func: AsyncFunc) -> AsyncFunc:
+    def decorator(func: F) -> F:
         @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             """Enable cProfile or not.
@@ -349,20 +337,23 @@ def cprofile(sort_by: str = "cumtime") -> AsyncDecorator:
             Any
                 The result of the function call.
             """
-            profiler_info = _enable_profiler(os.environ.get("ANTA_CPROFILE"))
+            cprofile_file = os.environ.get("ANTA_CPROFILE")
+
+            if cprofile_file is not None:
+                profiler = cProfile.Profile()
+                profiler.enable()
 
             try:
                 result = await func(*args, **kwargs)
             finally:
-                if profiler_info is not None:
-                    profiler, cprofile_file = profiler_info
+                if cprofile_file is not None:
                     profiler.disable()
                     stats = pstats.Stats(profiler).sort_stats(sort_by)
                     stats.dump_stats(cprofile_file)
 
             return result
 
-        return wrapper
+        return cast(F, wrapper)
 
     return decorator
 
@@ -383,35 +374,7 @@ def safe_command(command: str) -> str:
     return re.sub(rf"{REGEXP_PATH_MARKERS}", "_", command)
 
 
-def convert_categories(categories: Sequence[str], *, sort: bool = False) -> list[str]:
-    """Convert categories for reports using cache.
-
-    Handles input conversion and calls the cached conversion logic.
-
-    Parameters
-    ----------
-    categories
-        A list or tuple of categories.
-    sort
-        A boolean to indicate if the return should be sorted.
-
-    Returns
-    -------
-    list[str]
-        The list of converted categories, sorted if required.
-    """
-    if not isinstance(categories, (list, tuple)):
-        msg = f"Wrong input type '{type(categories)}' for convert_categories."
-        raise TypeError(msg)
-
-    categories_tuple = tuple(categories)
-    converted_categories_tuples = convert_categories_cached(categories_tuple)
-
-    return sorted(converted_categories_tuples) if sort else list(converted_categories_tuples)
-
-
-@cache
-def convert_categories_cached(categories: tuple[str, ...]) -> tuple[str, ...]:
+def convert_categories(categories: list[str]) -> list[str]:
     """Convert categories for reports.
 
     If the category is part of the defined acronym, transform it to upper case
@@ -420,31 +383,17 @@ def convert_categories_cached(categories: tuple[str, ...]) -> tuple[str, ...]:
     Parameters
     ----------
     categories
-        A tuple of categories.
+        A list of categories
 
     Returns
     -------
-    tuple[str]
-        The tuple of converted categories.
+    list[str]
+        The list of converted categories
     """
-    return tuple(convert_single_category_cached(category) for category in categories)
-
-
-@cache
-def convert_single_category_cached(category: str) -> str:
-    """Convert one category for reports.
-
-    Parameters
-    ----------
-    category
-        The category to convert.
-
-    Returns
-    -------
-    str
-        The converted category.
-    """
-    return " ".join(word.upper() if word.lower() in ACRONYM_CATEGORIES else word.title() for word in category.split())
+    if isinstance(categories, list):
+        return [" ".join(word.upper() if word.lower() in ACRONYM_CATEGORIES else word.title() for word in category.split()) for category in categories]
+    msg = f"Wrong input type '{type(categories)}' for convert_categories."
+    raise TypeError(msg)
 
 
 def format_data(data: dict[str, bool]) -> str:
@@ -466,143 +415,3 @@ def format_data(data: dict[str, bool]) -> str:
     "Advertised: True, Received: True, Enabled: True"
     """
     return ", ".join(f"{k.capitalize()}: {v}" for k, v in data.items())
-
-
-def is_interface_ignored(interface: str, ignored_interfaces: list[str] | None = None) -> bool | None:
-    """Verify if an interface is present in the ignored interfaces list.
-
-    Parameters
-    ----------
-    interface
-        This is a string containing the interface name.
-    ignored_interfaces
-        A list containing the interfaces or interface types to ignore.
-
-    Returns
-    -------
-    bool
-        True if the interface is in the list of ignored interfaces, false otherwise.
-    Example
-    -------
-    ```python
-    >>> _is_interface_ignored(interface="Ethernet1", ignored_interfaces=["Ethernet", "Port-Channel1"])
-    True
-    >>> _is_interface_ignored(interface="Ethernet2", ignored_interfaces=["Ethernet1", "Port-Channel"])
-    False
-    >>> _is_interface_ignored(interface="Port-Channel1", ignored_interfaces=["Ethernet1", "Port-Channel"])
-    True
-     >>> _is_interface_ignored(interface="Ethernet1/1", ignored_interfaces: ["Ethernet1/1", "Port-Channel"])
-    True
-    >>> _is_interface_ignored(interface="Ethernet1/1", ignored_interfaces: ["Ethernet1", "Port-Channel"])
-    False
-    >>> _is_interface_ignored(interface="Ethernet1.100", ignored_interfaces: ["Ethernet1.100", "Port-Channel"])
-    True
-    ```
-    """
-    interface_prefix = re.findall(r"^[a-zA-Z-]+", interface, re.IGNORECASE)[0]
-    interface_exact_match = False
-    if ignored_interfaces:
-        for ignored_interface in ignored_interfaces:
-            if interface == ignored_interface:
-                interface_exact_match = True
-                break
-        return bool(any([interface_exact_match, interface_prefix in ignored_interfaces]))
-    return None
-
-
-def get_value_by_range_key(dictionary: dict[str, Any], key: str, default: Any = None) -> Any:
-    """Get a value from a dictionary where keys represent ranges using the format '<prefix><start>-<end>' (e.g., 'TC0-4').
-
-    Returns the supplied default value or None if the key is not found.
-
-    Parameters
-    ----------
-    dictionary
-        A dictionary with keys as either:
-            - exact strings (e.g., 'TC1')
-            - range strings in format '<prefix><start>-<end>' (e.g., 'TC2-5')
-    key
-        The key to look up (e.g., 'TC1').
-    default
-        Default value returned if the key is not found.
-
-    Returns
-    -------
-    Any
-        Value or default value.
-
-    Examples
-    --------
-    >>> dictionary = {
-        "TC0": {"group": "Exact"},
-        "TC1-5": {"group": "A"},
-        "TC6-7": {"group": "B"},
-    }
-    >>> get_value_by_range_key("TC0", lookup_dict)
-    {'group': 'EXACT'}  # exact match takes priority
-
-    >>> get_value_by_range_key("TC3", dictionary)
-    {'group': 'A'}
-
-    >>> get_value_by_range_key("TC6", dictionary)
-    {'group': 'B'}
-
-    >>> get_value_by_range_key("TC9", dictionary)
-    None
-
-    >>> get_value_by_range_key("other1", dictionary)
-    None
-    """
-    # Exact match
-    if key in dictionary:
-        return dictionary[key]
-
-    # Range match
-    match = re.match(r"([a-zA-Z]+)(\d+)", key)
-    if not match:
-        return default
-
-    prefix, number = match.group(1), int(match.group(2))
-
-    for item, detail in dictionary.items():
-        key_match = re.match(rf"({prefix})(\d+)-(\d+)", item)
-        if key_match and int(key_match.group(2)) <= number <= int(key_match.group(3)):
-            return detail
-
-    return default
-
-
-def time_ago(timestamp: float) -> str:
-    """Return a human-readable string representing the time elapsed since a given timestamp.
-
-    Parameters
-    ----------
-    timestamp
-        A POSIX timestamp (a float representing seconds since the epoch).
-
-    Returns
-    -------
-    str
-        A string describing the elapsed time.
-    """
-    now = datetime.now(timezone.utc)
-    then = datetime.fromtimestamp(timestamp, tz=timezone.utc)
-    delta = now - then
-
-    if delta.days > 0:
-        return f"{delta.days} day{'s' if delta.days > 1 else ''}"
-
-    hours, remainder = divmod(delta.seconds, 3600)
-    minutes, _ = divmod(remainder, 60)
-
-    if hours > 0:
-        hour_str = f"{hours} hour{'s' if hours > 1 else ''}"
-        if minutes > 0:
-            minute_str = f"{minutes} minute{'s' if minutes > 1 else ''}"
-            return f"{hour_str} and {minute_str}"
-        return hour_str
-
-    if minutes > 0:
-        return f"{minutes} minute{'s' if minutes > 1 else ''}"
-
-    return "less than a minute"

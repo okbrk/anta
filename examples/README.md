@@ -13,11 +13,11 @@ The file [inventory.yaml](inventory.yaml) is an example of [device inventory](ht
 - Filename: [`tests.yaml`](./tests.yaml)
 
 The file [tests.yaml](tests.yaml) is an example of a [test catalog](https://anta.arista.com/stable/usage-inventory-catalog/#test-catalog).
-This file contains the non-advisory tests implemented in [anta.tests](../anta/tests) with arbitrary parameters.
+This file should contain all the tests implemented in [anta.tests](../anta/tests) with arbitrary parameters.
 
 ## Commands to get from snapshot
 
-- Filename: [`eos-commands.yaml`](./eos-commands.yaml)
+- Filename: [`eos-commands.yaml file`](./eos-commands.yaml)
 
 The file [eos-commands.yaml](eos-commands.yaml) is an example of input given with the `--commands-list` option to the [anta exec snapshot](https://anta.arista.com/stable/cli/exec/#collect-a-set-of-commands) command.
 

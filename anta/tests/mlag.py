@@ -1,10 +1,10 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Module related to Multi-chassis Link Aggregation (MLAG) tests."""
 
-# Pyright does not understand AntaTest.Input typing
-# pyright: reportAttributeAccessIssue=false
+# Mypy does not understand AntaTest.Input typing
+# mypy: disable-error-code=attr-defined
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
@@ -22,8 +22,10 @@ class VerifyMlagStatus(AntaTest):
 
     Expected Results
     ----------------
-    * Success: The test will pass if the MLAG state is 'active', negotiation status is 'connected', peer-link status and local interface status are 'up'.
-    * Failure: The test will fail if the MLAG state is not 'active', negotiation status is not 'connected', peer-link status or local interface status are not 'up'.
+    * Success: The test will pass if the MLAG state is 'active', negotiation status is 'connected',
+                   peer-link status and local interface status are 'up'.
+    * Failure: The test will fail if the MLAG state is not 'active', negotiation status is not 'connected',
+                   peer-link status or local interface status are not 'up'.
     * Skipped: The test will be skipped if MLAG is 'disabled'.
 
     Examples
@@ -40,25 +42,21 @@ class VerifyMlagStatus(AntaTest):
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyMlagStatus."""
-        self.result.is_success()
         command_output = self.instance_commands[0].json_output
-
-        # Skipping the test if MLAG is disabled
         if command_output["state"] == "disabled":
             self.result.is_skipped("MLAG is disabled")
             return
-
-        # Verifies the negotiation status
-        if (neg_status := command_output["negStatus"]) != "connected":
-            self.result.is_failure(f"MLAG negotiation status mismatch - Expected: connected Actual: {neg_status}")
-
-        # Verifies the local interface interface status
-        if (intf_state := command_output["localIntfStatus"]) != "up":
-            self.result.is_failure(f"Operational state of the MLAG local interface is not correct - Expected: up Actual: {intf_state}")
-
-        # Verifies the peerLinkStatus
-        if (peer_link_state := command_output["peerLinkStatus"]) != "up":
-            self.result.is_failure(f"Operational state of the MLAG peer link is not correct - Expected: up Actual: {peer_link_state}")
+        keys_to_verify = ["state", "negStatus", "localIntfStatus", "peerLinkStatus"]
+        verified_output = {key: get_value(command_output, key) for key in keys_to_verify}
+        if (
+            verified_output["state"] == "active"
+            and verified_output["negStatus"] == "connected"
+            and verified_output["localIntfStatus"] == "up"
+            and verified_output["peerLinkStatus"] == "up"
+        ):
+            self.result.is_success()
+        else:
+            self.result.is_failure(f"MLAG status is not OK: {verified_output}")
 
 
 class VerifyMlagInterfaces(AntaTest):
@@ -84,19 +82,14 @@ class VerifyMlagInterfaces(AntaTest):
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyMlagInterfaces."""
-        self.result.is_success()
         command_output = self.instance_commands[0].json_output
-
-        # Skipping the test if MLAG is disabled
         if command_output["state"] == "disabled":
             self.result.is_skipped("MLAG is disabled")
             return
-
-        # Verifies the Inactive and Active-partial ports
-        inactive_ports = command_output["mlagPorts"]["Inactive"]
-        partial_active_ports = command_output["mlagPorts"]["Active-partial"]
-        if inactive_ports != 0 or partial_active_ports != 0:
-            self.result.is_failure(f"MLAG status is not ok - Inactive Ports: {inactive_ports} Partial Active Ports: {partial_active_ports}")
+        if command_output["mlagPorts"]["Inactive"] == 0 and command_output["mlagPorts"]["Active-partial"] == 0:
+            self.result.is_success()
+        else:
+            self.result.is_failure(f"MLAG status is not OK: {command_output['mlagPorts']}")
 
 
 class VerifyMlagConfigSanity(AntaTest):
@@ -123,21 +116,16 @@ class VerifyMlagConfigSanity(AntaTest):
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyMlagConfigSanity."""
-        self.result.is_success()
         command_output = self.instance_commands[0].json_output
-
-        # Skipping the test if MLAG is disabled
         if command_output["mlagActive"] is False:
             self.result.is_skipped("MLAG is disabled")
             return
-
-        # Verifies the globalConfiguration config-sanity
-        if get_value(command_output, "globalConfiguration"):
-            self.result.is_failure("MLAG config-sanity found in global configuration")
-
-        # Verifies the interfaceConfiguration config-sanity
-        if get_value(command_output, "interfaceConfiguration"):
-            self.result.is_failure("MLAG config-sanity found in interface configuration")
+        keys_to_verify = ["globalConfiguration", "interfaceConfiguration"]
+        verified_output = {key: get_value(command_output, key) for key in keys_to_verify}
+        if not any(verified_output.values()):
+            self.result.is_success()
+        else:
+            self.result.is_failure(f"MLAG config-sanity returned inconsistencies: {verified_output}")
 
 
 class VerifyMlagReloadDelay(AntaTest):
@@ -173,21 +161,17 @@ class VerifyMlagReloadDelay(AntaTest):
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyMlagReloadDelay."""
-        self.result.is_success()
         command_output = self.instance_commands[0].json_output
-
-        # Skipping the test if MLAG is disabled
         if command_output["state"] == "disabled":
             self.result.is_skipped("MLAG is disabled")
             return
+        keys_to_verify = ["reloadDelay", "reloadDelayNonMlag"]
+        verified_output = {key: get_value(command_output, key) for key in keys_to_verify}
+        if verified_output["reloadDelay"] == self.inputs.reload_delay and verified_output["reloadDelayNonMlag"] == self.inputs.reload_delay_non_mlag:
+            self.result.is_success()
 
-        # Verifies the reloadDelay
-        if (reload_delay := get_value(command_output, "reloadDelay")) != self.inputs.reload_delay:
-            self.result.is_failure(f"MLAG reload-delay mismatch - Expected: {self.inputs.reload_delay}s Actual: {reload_delay}s")
-
-        # Verifies the reloadDelayNonMlag
-        if (non_mlag_reload_delay := get_value(command_output, "reloadDelayNonMlag")) != self.inputs.reload_delay_non_mlag:
-            self.result.is_failure(f"Delay for non-MLAG ports mismatch - Expected: {self.inputs.reload_delay_non_mlag}s Actual: {non_mlag_reload_delay}s")
+        else:
+            self.result.is_failure(f"The reload-delay parameters are not configured properly: {verified_output}")
 
 
 class VerifyMlagDualPrimary(AntaTest):
@@ -230,37 +214,25 @@ class VerifyMlagDualPrimary(AntaTest):
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyMlagDualPrimary."""
-        self.result.is_success()
         errdisabled_action = "errdisableAllInterfaces" if self.inputs.errdisabled else "none"
         command_output = self.instance_commands[0].json_output
-
-        # Skipping the test if MLAG is disabled
         if command_output["state"] == "disabled":
             self.result.is_skipped("MLAG is disabled")
             return
-
-        # Verifies the dualPrimaryDetectionState
         if command_output["dualPrimaryDetectionState"] == "disabled":
             self.result.is_failure("Dual-primary detection is disabled")
             return
-
-        # Verifies the dualPrimaryAction
-        if (primary_action := get_value(command_output, "detail.dualPrimaryAction")) != errdisabled_action:
-            self.result.is_failure(f"Dual-primary action mismatch - Expected: {errdisabled_action} Actual: {primary_action}")
-
-        # Verifies the dualPrimaryDetectionDelay
-        if (detection_delay := get_value(command_output, "detail.dualPrimaryDetectionDelay")) != self.inputs.detection_delay:
-            self.result.is_failure(f"Dual-primary detection delay mismatch - Expected: {self.inputs.detection_delay} Actual: {detection_delay}")
-
-        # Verifies the dualPrimaryMlagRecoveryDelay
-        if (recovery_delay := get_value(command_output, "dualPrimaryMlagRecoveryDelay")) != self.inputs.recovery_delay:
-            self.result.is_failure(f"Dual-primary MLAG recovery delay mismatch - Expected: {self.inputs.recovery_delay} Actual: {recovery_delay}")
-
-        # Verifies the dualPrimaryNonMlagRecoveryDelay
-        if (recovery_delay_non_mlag := get_value(command_output, "dualPrimaryNonMlagRecoveryDelay")) != self.inputs.recovery_delay_non_mlag:
-            self.result.is_failure(
-                f"Dual-primary non MLAG recovery delay mismatch - Expected: {self.inputs.recovery_delay_non_mlag} Actual: {recovery_delay_non_mlag}"
-            )
+        keys_to_verify = ["detail.dualPrimaryDetectionDelay", "detail.dualPrimaryAction", "dualPrimaryMlagRecoveryDelay", "dualPrimaryNonMlagRecoveryDelay"]
+        verified_output = {key: get_value(command_output, key) for key in keys_to_verify}
+        if (
+            verified_output["detail.dualPrimaryDetectionDelay"] == self.inputs.detection_delay
+            and verified_output["detail.dualPrimaryAction"] == errdisabled_action
+            and verified_output["dualPrimaryMlagRecoveryDelay"] == self.inputs.recovery_delay
+            and verified_output["dualPrimaryNonMlagRecoveryDelay"] == self.inputs.recovery_delay_non_mlag
+        ):
+            self.result.is_success()
+        else:
+            self.result.is_failure(f"The dual-primary parameters are not configured properly: {verified_output}")
 
 
 class VerifyMlagPrimaryPriority(AntaTest):
@@ -306,8 +278,10 @@ class VerifyMlagPrimaryPriority(AntaTest):
 
         # Check MLAG state
         if mlag_state != "primary":
-            self.result.is_failure("The device is not set as MLAG primary")
+            self.result.is_failure("The device is not set as MLAG primary.")
 
         # Check primary priority
         if primary_priority != self.inputs.primary_priority:
-            self.result.is_failure(f"MLAG primary priority mismatch - Expected: {self.inputs.primary_priority} Actual: {primary_priority}")
+            self.result.is_failure(
+                f"The primary priority does not match expected. Expected `{self.inputs.primary_priority}`, but found `{primary_priority}` instead.",
+            )

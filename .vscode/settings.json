@@ -10,6 +10,5 @@
   "pylint.args": [
     "--rcfile=pyproject.toml"
   ],
-  "python-envs.defaultEnvManager": "ms-python.python:venv",
 
 }

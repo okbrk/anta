@@ -1,33 +1,25 @@
----
-title: ANTA Device API
-hide:
-  - tags
-tags:
-  - API
-  - Inventory
-  - Python
----
-
 <!--
-  ~ Copyright (c) 2023-2026 Arista Networks, Inc.
+  ~ Copyright (c) 2023-2025 Arista Networks, Inc.
   ~ Use of this source code is governed by the Apache License 2.0
   ~ that can be found in the LICENSE file.
   -->
 
-::: anta.device.DeviceVersion
+# AntaDevice base class
+
+![AntaDevice UML model](../imgs/uml/anta.device.AntaDevice.jpeg)
+
+## ::: anta.device.AntaDevice
+
     options:
-      filters: ["!^_", "^\\x5f\\x5fstr\\x5f\\x5f$"]
+      filters: ["!^_[^_]", "!__(eq|rich_repr)__", "_collect"]
 
-::: anta.device.AntaDeviceCapabilities
+# Async EOS device class
 
-::: anta.device.SSLParameters
-
-::: anta.device.AntaDevice
-    options:
-      filters: ["!^_", "_collect"]
+![AsyncEOSDevice UML model](../imgs/uml/anta.device.AsyncEOSDevice.jpeg)
 
 <!-- _collect must be last to be kept -->
 
-::: anta.device.AsyncEOSDevice
+## ::: anta.device.AsyncEOSDevice
+
     options:
-      filters: ["!^_", "_collect"]
+      filters: ["!^_[^_]", "!__(eq|rich_repr)__", "_collect"]

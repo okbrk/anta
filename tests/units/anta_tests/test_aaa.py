@@ -1,15 +1,12 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Tests for anta.tests.aaa.py."""
 
 from __future__ import annotations
 
-import sys
-from typing import TYPE_CHECKING
+from typing import Any
 
-from anta.models import AntaTest
-from anta.result_manager.models import AntaTestStatus
 from anta.tests.aaa import (
     VerifyAcctConsoleMethods,
     VerifyAcctDefaultMethods,
@@ -21,407 +18,510 @@ from anta.tests.aaa import (
 )
 from tests.units.anta_tests import test
 
-if TYPE_CHECKING:
-    from tests.units.anta_tests import AntaUnitTestData
-
-DATA: AntaUnitTestData = {
-    (VerifyTacacsSourceIntf, "success"): {
+DATA: list[dict[str, Any]] = [
+    {
+        "name": "success",
+        "test": VerifyTacacsSourceIntf,
         "eos_data": [
             {
-                "tacacsServers": [{"serverInfo": {"hostname": "10.22.10.91", "authport": 49, "vrf": "MGMT"}}],
+                "tacacsServers": [
+                    {
+                        "serverInfo": {"hostname": "10.22.10.91", "authport": 49, "vrf": "MGMT"},
+                    },
+                ],
                 "groups": {"GROUP1": {"serverGroup": "TACACS+", "members": [{"hostname": "SERVER1", "authport": 49, "vrf": "MGMT"}]}},
                 "srcIntf": {"MGMT": "Management0"},
-            }
+            },
         ],
         "inputs": {"intf": "Management0", "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyTacacsSourceIntf, "failure-not-configured"): {
-        "eos_data": [{"tacacsServers": [], "groups": {}, "srcIntf": {}}],
-        "inputs": {"intf": "Management0", "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["VRF: MGMT Source Interface: Management0 - Not configured"]},
-    },
-    (VerifyTacacsSourceIntf, "failure-wrong-intf"): {
+    {
+        "name": "failure-not-configured",
+        "test": VerifyTacacsSourceIntf,
         "eos_data": [
             {
-                "tacacsServers": [{"serverInfo": {"hostname": "10.22.10.91", "authport": 49, "vrf": "MGMT"}}],
+                "tacacsServers": [],
+                "groups": {},
+                "srcIntf": {},
+            },
+        ],
+        "inputs": {"intf": "Management0", "vrf": "MGMT"},
+        "expected": {"result": "failure", "messages": ["Source-interface Management0 is not configured in VRF MGMT"]},
+    },
+    {
+        "name": "failure-wrong-intf",
+        "test": VerifyTacacsSourceIntf,
+        "eos_data": [
+            {
+                "tacacsServers": [
+                    {
+                        "serverInfo": {"hostname": "10.22.10.91", "authport": 49, "vrf": "MGMT"},
+                    },
+                ],
                 "groups": {"GROUP1": {"serverGroup": "TACACS+", "members": [{"hostname": "SERVER1", "authport": 49, "vrf": "MGMT"}]}},
                 "srcIntf": {"MGMT": "Management1"},
-            }
+            },
         ],
         "inputs": {"intf": "Management0", "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["VRF: MGMT - Source interface mismatch - Expected: Management0 Actual: Management1"]},
+        "expected": {"result": "failure", "messages": ["Wrong source-interface configured in VRF MGMT"]},
     },
-    (VerifyTacacsSourceIntf, "failure-wrong-vrf"): {
+    {
+        "name": "failure-wrong-vrf",
+        "test": VerifyTacacsSourceIntf,
         "eos_data": [
             {
-                "tacacsServers": [{"serverInfo": {"hostname": "10.22.10.91", "authport": 49, "vrf": "MGMT"}}],
+                "tacacsServers": [
+                    {
+                        "serverInfo": {"hostname": "10.22.10.91", "authport": 49, "vrf": "MGMT"},
+                    },
+                ],
                 "groups": {"GROUP1": {"serverGroup": "TACACS+", "members": [{"hostname": "SERVER1", "authport": 49, "vrf": "MGMT"}]}},
                 "srcIntf": {"PROD": "Management0"},
-            }
+            },
         ],
         "inputs": {"intf": "Management0", "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["VRF: MGMT Source Interface: Management0 - Not configured"]},
+        "expected": {"result": "failure", "messages": ["Source-interface Management0 is not configured in VRF MGMT"]},
     },
-    (VerifyTacacsServers, "success"): {
+    {
+        "name": "success",
+        "test": VerifyTacacsServers,
         "eos_data": [
             {
-                "tacacsServers": [{"serverInfo": {"hostname": "10.22.10.91", "authport": 49, "vrf": "MGMT"}}],
+                "tacacsServers": [
+                    {
+                        "serverInfo": {"hostname": "10.22.10.91", "authport": 49, "vrf": "MGMT"},
+                    },
+                ],
                 "groups": {"GROUP1": {"serverGroup": "TACACS+", "members": [{"hostname": "SERVER1", "authport": 49, "vrf": "MGMT"}]}},
                 "srcIntf": {"MGMT": "Management0"},
-            }
+            },
         ],
         "inputs": {"servers": ["10.22.10.91"], "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyTacacsServers, "success-default-vrf"): {
+    {
+        "name": "failure-no-servers",
+        "test": VerifyTacacsServers,
         "eos_data": [
             {
-                "tacacsServers": [{"serverInfo": {"hostname": "10.22.10.91", "authport": 49}}],
-            }
+                "tacacsServers": [],
+                "groups": {},
+                "srcIntf": {},
+            },
         ],
-        "inputs": {"servers": ["10.22.10.91"]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyTacacsServers, "failure-no-servers"): {
-        "eos_data": [{"tacacsServers": [], "groups": {}, "srcIntf": {}}],
         "inputs": {"servers": ["10.22.10.91"], "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["No TACACS servers are configured"]},
+        "expected": {"result": "failure", "messages": ["No TACACS servers are configured"]},
     },
-    (VerifyTacacsServers, "failure-not-configured"): {
+    {
+        "name": "failure-not-configured",
+        "test": VerifyTacacsServers,
         "eos_data": [
             {
-                "tacacsServers": [{"serverInfo": {"hostname": "10.22.10.91", "authport": 49, "vrf": "MGMT"}}],
+                "tacacsServers": [
+                    {
+                        "serverInfo": {"hostname": "10.22.10.91", "authport": 49, "vrf": "MGMT"},
+                    },
+                ],
                 "groups": {"GROUP1": {"serverGroup": "TACACS+", "members": [{"hostname": "SERVER1", "authport": 49, "vrf": "MGMT"}]}},
                 "srcIntf": {"MGMT": "Management0"},
-            }
+            },
         ],
         "inputs": {"servers": ["10.22.10.91", "10.22.10.92"], "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["TACACS servers 10.22.10.92 are not configured in VRF MGMT"]},
+        "expected": {"result": "failure", "messages": ["TACACS servers ['10.22.10.92'] are not configured in VRF MGMT"]},
     },
-    (VerifyTacacsServers, "failure-wrong-vrf"): {
+    {
+        "name": "failure-wrong-vrf",
+        "test": VerifyTacacsServers,
         "eos_data": [
             {
-                "tacacsServers": [{"serverInfo": {"hostname": "10.22.10.91", "authport": 49, "vrf": "PROD"}}],
+                "tacacsServers": [
+                    {
+                        "serverInfo": {"hostname": "10.22.10.91", "authport": 49, "vrf": "PROD"},
+                    },
+                ],
                 "groups": {"GROUP1": {"serverGroup": "TACACS+", "members": [{"hostname": "SERVER1", "authport": 49, "vrf": "MGMT"}]}},
                 "srcIntf": {"MGMT": "Management0"},
-            }
+            },
         ],
         "inputs": {"servers": ["10.22.10.91"], "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["TACACS servers 10.22.10.91 are not configured in VRF MGMT"]},
+        "expected": {"result": "failure", "messages": ["TACACS servers ['10.22.10.91'] are not configured in VRF MGMT"]},
     },
-    (VerifyTacacsServers, "failure-wrong-vrf-2"): {
+    {
+        "name": "success",
+        "test": VerifyTacacsServerGroups,
         "eos_data": [
             {
-                "tacacsServers": [{"serverInfo": {"hostname": "10.22.10.91", "authport": 49, "vrf": "PROD"}}],
-            }
-        ],
-        "inputs": {"servers": ["10.22.10.91"]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["TACACS servers 10.22.10.91 are not configured in VRF default"]},
-    },
-    (VerifyTacacsServers, "failure-wrong-vrf-3"): {
-        "eos_data": [
-            {
-                "tacacsServers": [{"serverInfo": {"hostname": "10.22.10.91", "authport": 49}}],
-            }
-        ],
-        "inputs": {"servers": ["10.22.10.91"], "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["TACACS servers 10.22.10.91 are not configured in VRF MGMT"]},
-    },
-    (VerifyTacacsServerGroups, "success"): {
-        "eos_data": [
-            {
-                "tacacsServers": [{"serverInfo": {"hostname": "10.22.10.91", "authport": 49, "vrf": "MGMT"}}],
+                "tacacsServers": [
+                    {
+                        "serverInfo": {"hostname": "10.22.10.91", "authport": 49, "vrf": "MGMT"},
+                    },
+                ],
                 "groups": {"GROUP1": {"serverGroup": "TACACS+", "members": [{"hostname": "SERVER1", "authport": 49, "vrf": "MGMT"}]}},
                 "srcIntf": {"MGMT": "Management0"},
-            }
+            },
         ],
         "inputs": {"groups": ["GROUP1"]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyTacacsServerGroups, "failure-no-server-groups"): {
-        "eos_data": [{"tacacsServers": [], "groups": {}, "srcIntf": {}}],
-        "inputs": {"groups": ["GROUP1"]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["No TACACS server group(s) are configured"]},
-    },
-    (VerifyTacacsServerGroups, "failure-not-configured"): {
+    {
+        "name": "failure-no-server-groups",
+        "test": VerifyTacacsServerGroups,
         "eos_data": [
             {
-                "tacacsServers": [{"serverInfo": {"hostname": "10.22.10.91", "authport": 49, "vrf": "MGMT"}}],
+                "tacacsServers": [],
+                "groups": {},
+                "srcIntf": {},
+            },
+        ],
+        "inputs": {"groups": ["GROUP1"]},
+        "expected": {"result": "failure", "messages": ["No TACACS server group(s) are configured"]},
+    },
+    {
+        "name": "failure-not-configured",
+        "test": VerifyTacacsServerGroups,
+        "eos_data": [
+            {
+                "tacacsServers": [
+                    {
+                        "serverInfo": {"hostname": "10.22.10.91", "authport": 49, "vrf": "MGMT"},
+                    },
+                ],
                 "groups": {"GROUP2": {"serverGroup": "TACACS+", "members": [{"hostname": "SERVER1", "authport": 49, "vrf": "MGMT"}]}},
                 "srcIntf": {"MGMT": "Management0"},
-            }
+            },
         ],
         "inputs": {"groups": ["GROUP1"]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["TACACS server group(s) GROUP1 are not configured"]},
+        "expected": {"result": "failure", "messages": ["TACACS server group(s) ['GROUP1'] are not configured"]},
     },
-    (VerifyAuthenMethods, "success-login-enable"): {
-        "eos_data": [
-            {
-                "loginAuthenMethods": {"default": {"methods": ["local", "group tacacs+"]}, "login": {"methods": ["local", "group tacacs+"]}},
-                "enableAuthenMethods": {"default": {"methods": ["local", "group tacacs+"]}},
-                "dot1xAuthenMethods": {"default": {"methods": ["group radius"]}},
-            }
-        ],
-        "inputs": {"methods": ["tacacs+", "local"], "types": ["login", "enable"]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyAuthenMethods, "success-login-enable-console-method-list"): {
-        "eos_data": [
-            {
-                "loginAuthenMethods": {"default": {"methods": ["group tacacs+", "local"]}, "console": {"methods": ["group tacacs+", "local"]}},
-                "enableAuthenMethods": {"default": {"methods": ["group tacacs+", "local"]}},
-                "dot1xAuthenMethods": {"default": {"methods": ["group radius"]}},
-            }
-        ],
-        "inputs": {"methods": ["tacacs+", "local"], "types": ["login", "enable"]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyAuthenMethods, "success-dot1x"): {
+    {
+        "name": "success-login-enable",
+        "test": VerifyAuthenMethods,
         "eos_data": [
             {
                 "loginAuthenMethods": {"default": {"methods": ["group tacacs+", "local"]}, "login": {"methods": ["group tacacs+", "local"]}},
                 "enableAuthenMethods": {"default": {"methods": ["group tacacs+", "local"]}},
                 "dot1xAuthenMethods": {"default": {"methods": ["group radius"]}},
-            }
+            },
+        ],
+        "inputs": {"methods": ["tacacs+", "local"], "types": ["login", "enable"]},
+        "expected": {"result": "success"},
+    },
+    {
+        "name": "success-dot1x",
+        "test": VerifyAuthenMethods,
+        "eos_data": [
+            {
+                "loginAuthenMethods": {"default": {"methods": ["group tacacs+", "local"]}, "login": {"methods": ["group tacacs+", "local"]}},
+                "enableAuthenMethods": {"default": {"methods": ["group tacacs+", "local"]}},
+                "dot1xAuthenMethods": {"default": {"methods": ["group radius"]}},
+            },
         ],
         "inputs": {"methods": ["radius"], "types": ["dot1x"]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyAuthenMethods, "failure-no-login-console"): {
+    {
+        "name": "failure-no-login-console",
+        "test": VerifyAuthenMethods,
         "eos_data": [
             {
                 "loginAuthenMethods": {"default": {"methods": ["group tacacs+", "local"]}},
                 "enableAuthenMethods": {"default": {"methods": ["group tacacs+", "local"]}},
                 "dot1xAuthenMethods": {"default": {"methods": ["group radius"]}},
-            }
+            },
         ],
         "inputs": {"methods": ["tacacs+", "local"], "types": ["login", "enable"]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["AAA authentication methods are not configured for login console"]},
+        "expected": {"result": "failure", "messages": ["AAA authentication methods are not configured for login console"]},
     },
-    (VerifyAuthenMethods, "failure-login-console"): {
+    {
+        "name": "failure-login-console",
+        "test": VerifyAuthenMethods,
         "eos_data": [
             {
                 "loginAuthenMethods": {"default": {"methods": ["group tacacs+", "local"]}, "login": {"methods": ["group radius", "local"]}},
                 "enableAuthenMethods": {"default": {"methods": ["group tacacs+", "local"]}},
                 "dot1xAuthenMethods": {"default": {"methods": ["group radius"]}},
-            }
+            },
         ],
         "inputs": {"methods": ["tacacs+", "local"], "types": ["login", "enable"]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["AAA authentication methods group tacacs+, local are not matching for login console"]},
+        "expected": {"result": "failure", "messages": ["AAA authentication methods ['group tacacs+', 'local'] are not matching for login console"]},
     },
-    (VerifyAuthenMethods, "failure-login-console-method-list"): {
-        "eos_data": [
-            {
-                "loginAuthenMethods": {"default": {"methods": ["group tacacs+", "local"]}, "console": {"methods": ["group radius", "local"]}},
-                "enableAuthenMethods": {"default": {"methods": ["group tacacs+", "local"]}},
-                "dot1xAuthenMethods": {"default": {"methods": ["group radius"]}},
-            }
-        ],
-        "inputs": {"methods": ["tacacs+", "local"], "types": ["login", "enable"]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["AAA authentication methods group tacacs+, local are not matching for login console"]},
-    },
-    (VerifyAuthenMethods, "failure-login-command-api-and-default-method-lists"): {
-        "eos_data": [
-            {
-                "loginAuthenMethods": {
-                    "default": {"methods": ["local", "none"]},
-                    "command-api": {"methods": ["group tacacs+", "none"]},
-                    "login": {"methods": ["none"]},
-                },
-                "enableAuthenMethods": {"default": {"methods": ["local"]}},
-                "dot1xAuthenMethods": {"default": {"methods": []}},
-            }
-        ],
-        "inputs": {"methods": ["none"], "types": ["login"]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["AAA authentication methods none are not matching for login"]},
-    },
-    (VerifyAuthenMethods, "failure-login-default"): {
+    {
+        "name": "failure-login-default",
+        "test": VerifyAuthenMethods,
         "eos_data": [
             {
                 "loginAuthenMethods": {"default": {"methods": ["group radius", "local"]}, "login": {"methods": ["group tacacs+", "local"]}},
                 "enableAuthenMethods": {"default": {"methods": ["group tacacs+", "local"]}},
                 "dot1xAuthenMethods": {"default": {"methods": ["group radius"]}},
-            }
+            },
         ],
         "inputs": {"methods": ["tacacs+", "local"], "types": ["login", "enable"]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["AAA authentication methods group tacacs+, local are not matching for login"]},
+        "expected": {"result": "failure", "messages": ["AAA authentication methods ['group tacacs+', 'local'] are not matching for ['login']"]},
     },
-    (VerifyAuthenMethods, "failure-login-console-missing-does-not-skip-enable"): {
-        "eos_data": [
-            {
-                "loginAuthenMethods": {"default": {"methods": ["group tacacs+", "local"]}},
-                "enableAuthenMethods": {"default": {"methods": ["group radius", "local"]}},
-                "dot1xAuthenMethods": {"default": {"methods": ["group radius"]}},
-            }
-        ],
-        "inputs": {"methods": ["tacacs+", "local"], "types": ["login", "enable"]},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": [
-                "AAA authentication methods are not configured for login console",
-                "AAA authentication methods group tacacs+, local are not matching for enable",
-            ],
-        },
-    },
-    (VerifyAuthzMethods, "success"): {
-        "eos_data": [
-            {
-                "commandsAuthzMethods": {"privilege0-15": {"methods": ["group tacacs+", "local"]}},
-                "execAuthzMethods": {"exec": {"methods": ["local", "group tacacs+"]}},
-            }
-        ],
-        "inputs": {"methods": ["tacacs+", "local"], "types": ["commands", "exec"]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyAuthzMethods, "success-skipping-exec"): {
+    {
+        "name": "success",
+        "test": VerifyAuthzMethods,
         "eos_data": [
             {
                 "commandsAuthzMethods": {"privilege0-15": {"methods": ["group tacacs+", "local"]}},
                 "execAuthzMethods": {"exec": {"methods": ["group tacacs+", "local"]}},
-            }
+            },
+        ],
+        "inputs": {"methods": ["tacacs+", "local"], "types": ["commands", "exec"]},
+        "expected": {"result": "success"},
+    },
+    {
+        "name": "success-skipping-exec",
+        "test": VerifyAuthzMethods,
+        "eos_data": [
+            {
+                "commandsAuthzMethods": {"privilege0-15": {"methods": ["group tacacs+", "local"]}},
+                "execAuthzMethods": {"exec": {"methods": ["group tacacs+", "local"]}},
+            },
         ],
         "inputs": {"methods": ["tacacs+", "local"], "types": ["commands"]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyAuthzMethods, "failure-commands"): {
+    {
+        "name": "failure-commands",
+        "test": VerifyAuthzMethods,
         "eos_data": [
             {
                 "commandsAuthzMethods": {"privilege0-15": {"methods": ["group radius", "local"]}},
                 "execAuthzMethods": {"exec": {"methods": ["group tacacs+", "local"]}},
-            }
+            },
         ],
         "inputs": {"methods": ["tacacs+", "local"], "types": ["commands", "exec"]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["AAA authorization methods group tacacs+, local are not matching for commands"]},
+        "expected": {"result": "failure", "messages": ["AAA authorization methods ['group tacacs+', 'local'] are not matching for ['commands']"]},
     },
-    (VerifyAuthzMethods, "failure-exec"): {
+    {
+        "name": "failure-exec",
+        "test": VerifyAuthzMethods,
         "eos_data": [
             {
                 "commandsAuthzMethods": {"privilege0-15": {"methods": ["group tacacs+", "local"]}},
                 "execAuthzMethods": {"exec": {"methods": ["group radius", "local"]}},
-            }
+            },
         ],
         "inputs": {"methods": ["tacacs+", "local"], "types": ["commands", "exec"]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["AAA authorization methods group tacacs+, local are not matching for exec"]},
+        "expected": {"result": "failure", "messages": ["AAA authorization methods ['group tacacs+', 'local'] are not matching for ['exec']"]},
     },
-    (VerifyAcctDefaultMethods, "success-commands-exec-system"): {
+    {
+        "name": "success-commands-exec-system",
+        "test": VerifyAcctDefaultMethods,
         "eos_data": [
             {
                 "commandsAcctMethods": {"privilege0-15": {"defaultAction": "startStop", "defaultMethods": ["group tacacs+", "logging"], "consoleMethods": []}},
-                "execAcctMethods": {"exec": {"defaultAction": "startStop", "defaultMethods": ["logging", "group tacacs+"], "consoleMethods": []}},
+                "execAcctMethods": {"exec": {"defaultAction": "startStop", "defaultMethods": ["group tacacs+", "logging"], "consoleMethods": []}},
                 "systemAcctMethods": {"system": {"defaultAction": "startStop", "defaultMethods": ["group tacacs+", "logging"], "consoleMethods": []}},
                 "dot1xAcctMethods": {"dot1x": {"defaultMethods": [], "consoleMethods": []}},
-            }
+            },
         ],
         "inputs": {"methods": ["tacacs+", "logging"], "types": ["commands", "exec", "system"]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyAcctDefaultMethods, "success-dot1x"): {
+    {
+        "name": "success-dot1x",
+        "test": VerifyAcctDefaultMethods,
         "eos_data": [
             {
                 "commandsAcctMethods": {"privilege0-15": {"defaultAction": "startStop", "defaultMethods": ["group tacacs+", "logging"], "consoleMethods": []}},
                 "execAcctMethods": {"exec": {"defaultAction": "startStop", "defaultMethods": ["group tacacs+", "logging"], "consoleMethods": []}},
                 "systemAcctMethods": {"system": {"defaultAction": "startStop", "defaultMethods": ["group tacacs+", "logging"], "consoleMethods": []}},
                 "dot1xAcctMethods": {"dot1x": {"defaultAction": "startStop", "defaultMethods": ["group radius", "logging"], "consoleMethods": []}},
-            }
+            },
         ],
         "inputs": {"methods": ["radius", "logging"], "types": ["dot1x"]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyAcctDefaultMethods, "failure-not-configured"): {
+    {
+        "name": "failure-not-configured",
+        "test": VerifyAcctDefaultMethods,
         "eos_data": [
             {
                 "commandsAcctMethods": {"privilege0-15": {"defaultMethods": [], "consoleMethods": []}},
                 "execAcctMethods": {"exec": {"defaultAction": "startStop", "defaultMethods": ["group tacacs+", "logging"], "consoleMethods": []}},
                 "systemAcctMethods": {"system": {"defaultAction": "startStop", "defaultMethods": ["group tacacs+", "logging"], "consoleMethods": []}},
                 "dot1xAcctMethods": {"dot1x": {"defaultMethods": [], "consoleMethods": []}},
-            }
+            },
         ],
         "inputs": {"methods": ["tacacs+", "logging"], "types": ["commands", "exec", "system"]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["AAA default accounting is not configured for commands"]},
+        "expected": {"result": "failure", "messages": ["AAA default accounting is not configured for ['commands']"]},
     },
-    (VerifyAcctDefaultMethods, "failure-not-configured-empty"): {
+    {
+        "name": "failure-not-configured-empty",
+        "test": VerifyAcctDefaultMethods,
         "eos_data": [
             {
                 "systemAcctMethods": {"system": {"defaultMethods": [], "consoleMethods": []}},
                 "execAcctMethods": {"exec": {"defaultMethods": [], "consoleMethods": []}},
                 "commandsAcctMethods": {"privilege0-15": {"defaultMethods": [], "consoleMethods": []}},
                 "dot1xAcctMethods": {"dot1x": {"defaultMethods": [], "consoleMethods": []}},
-            }
+            },
         ],
         "inputs": {"methods": ["tacacs+", "logging"], "types": ["commands", "exec", "system"]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["AAA default accounting is not configured for system, exec, commands"]},
+        "expected": {"result": "failure", "messages": ["AAA default accounting is not configured for ['system', 'exec', 'commands']"]},
     },
-    (VerifyAcctDefaultMethods, "failure-not-matching"): {
+    {
+        "name": "failure-not-matching",
+        "test": VerifyAcctDefaultMethods,
         "eos_data": [
             {
                 "commandsAcctMethods": {"privilege0-15": {"defaultAction": "startStop", "defaultMethods": ["group radius", "logging"], "consoleMethods": []}},
                 "execAcctMethods": {"exec": {"defaultAction": "startStop", "defaultMethods": ["group tacacs+", "logging"], "consoleMethods": []}},
                 "systemAcctMethods": {"system": {"defaultAction": "startStop", "defaultMethods": ["group tacacs+", "logging"], "consoleMethods": []}},
                 "dot1xAcctMethods": {"dot1x": {"defaultMethods": [], "consoleMethods": []}},
-            }
+            },
         ],
         "inputs": {"methods": ["tacacs+", "logging"], "types": ["commands", "exec", "system"]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["AAA accounting default methods group tacacs+, logging are not matching for commands"]},
+        "expected": {"result": "failure", "messages": ["AAA accounting default methods ['group tacacs+', 'logging'] are not matching for ['commands']"]},
     },
-    (VerifyAcctConsoleMethods, "success-commands-exec-system"): {
+    {
+        "name": "success-commands-exec-system",
+        "test": VerifyAcctConsoleMethods,
         "eos_data": [
             {
-                "commandsAcctMethods": {"privilege0-15": {"defaultMethods": [], "consoleAction": "startStop", "consoleMethods": ["group tacacs+", "logging"]}},
-                "execAcctMethods": {"exec": {"defaultMethods": [], "consoleAction": "startStop", "consoleMethods": ["logging", "group tacacs+"]}},
-                "systemAcctMethods": {"system": {"defaultMethods": [], "consoleAction": "startStop", "consoleMethods": ["group tacacs+", "logging"]}},
+                "commandsAcctMethods": {
+                    "privilege0-15": {
+                        "defaultMethods": [],
+                        "consoleAction": "startStop",
+                        "consoleMethods": ["group tacacs+", "logging"],
+                    },
+                },
+                "execAcctMethods": {
+                    "exec": {
+                        "defaultMethods": [],
+                        "consoleAction": "startStop",
+                        "consoleMethods": ["group tacacs+", "logging"],
+                    },
+                },
+                "systemAcctMethods": {
+                    "system": {
+                        "defaultMethods": [],
+                        "consoleAction": "startStop",
+                        "consoleMethods": ["group tacacs+", "logging"],
+                    },
+                },
                 "dot1xAcctMethods": {"dot1x": {"defaultMethods": [], "consoleMethods": []}},
-            }
+            },
         ],
         "inputs": {"methods": ["tacacs+", "logging"], "types": ["commands", "exec", "system"]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyAcctConsoleMethods, "success-dot1x"): {
+    {
+        "name": "success-dot1x",
+        "test": VerifyAcctConsoleMethods,
         "eos_data": [
             {
-                "commandsAcctMethods": {"privilege0-15": {"defaultMethods": [], "consoleAction": "startStop", "consoleMethods": ["group tacacs+", "logging"]}},
-                "execAcctMethods": {"exec": {"defaultMethods": [], "consoleAction": "startStop", "consoleMethods": ["group tacacs+", "logging"]}},
-                "systemAcctMethods": {"system": {"defaultMethods": [], "consoleAction": "startStop", "consoleMethods": ["group tacacs+", "logging"]}},
-                "dot1xAcctMethods": {"dot1x": {"defaultMethods": [], "consoleAction": "startStop", "consoleMethods": ["group tacacs+", "logging"]}},
-            }
+                "commandsAcctMethods": {
+                    "privilege0-15": {
+                        "defaultMethods": [],
+                        "consoleAction": "startStop",
+                        "consoleMethods": ["group tacacs+", "logging"],
+                    },
+                },
+                "execAcctMethods": {
+                    "exec": {
+                        "defaultMethods": [],
+                        "consoleAction": "startStop",
+                        "consoleMethods": ["group tacacs+", "logging"],
+                    },
+                },
+                "systemAcctMethods": {
+                    "system": {
+                        "defaultMethods": [],
+                        "consoleAction": "startStop",
+                        "consoleMethods": ["group tacacs+", "logging"],
+                    },
+                },
+                "dot1xAcctMethods": {
+                    "dot1x": {
+                        "defaultMethods": [],
+                        "consoleAction": "startStop",
+                        "consoleMethods": ["group tacacs+", "logging"],
+                    },
+                },
+            },
         ],
         "inputs": {"methods": ["tacacs+", "logging"], "types": ["dot1x"]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyAcctConsoleMethods, "failure-not-configured"): {
+    {
+        "name": "failure-not-configured",
+        "test": VerifyAcctConsoleMethods,
         "eos_data": [
             {
-                "commandsAcctMethods": {"privilege0-15": {"defaultMethods": [], "consoleMethods": []}},
-                "execAcctMethods": {"exec": {"defaultMethods": [], "consoleAction": "startStop", "consoleMethods": ["group tacacs+", "logging"]}},
-                "systemAcctMethods": {"system": {"defaultMethods": [], "consoleAction": "startStop", "consoleMethods": ["group tacacs+", "logging"]}},
+                "commandsAcctMethods": {
+                    "privilege0-15": {
+                        "defaultMethods": [],
+                        "consoleMethods": [],
+                    },
+                },
+                "execAcctMethods": {
+                    "exec": {
+                        "defaultMethods": [],
+                        "consoleAction": "startStop",
+                        "consoleMethods": ["group tacacs+", "logging"],
+                    },
+                },
+                "systemAcctMethods": {
+                    "system": {
+                        "defaultMethods": [],
+                        "consoleAction": "startStop",
+                        "consoleMethods": ["group tacacs+", "logging"],
+                    },
+                },
                 "dot1xAcctMethods": {"dot1x": {"defaultMethods": [], "consoleMethods": []}},
-            }
+            },
         ],
         "inputs": {"methods": ["tacacs+", "logging"], "types": ["commands", "exec", "system"]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["AAA console accounting is not configured for commands"]},
+        "expected": {"result": "failure", "messages": ["AAA console accounting is not configured for ['commands']"]},
     },
-    (VerifyAcctConsoleMethods, "failure-not-configured-empty"): {
+    {
+        "name": "failure-not-configured-empty",
+        "test": VerifyAcctConsoleMethods,
         "eos_data": [
             {
                 "systemAcctMethods": {"system": {"defaultMethods": [], "consoleMethods": []}},
                 "execAcctMethods": {"exec": {"defaultMethods": [], "consoleMethods": []}},
                 "commandsAcctMethods": {"privilege0-15": {"defaultMethods": [], "consoleMethods": []}},
                 "dot1xAcctMethods": {"dot1x": {"defaultMethods": [], "consoleMethods": []}},
-            }
+            },
         ],
         "inputs": {"methods": ["tacacs+", "logging"], "types": ["commands", "exec", "system"]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["AAA console accounting is not configured for system, exec, commands"]},
+        "expected": {"result": "failure", "messages": ["AAA console accounting is not configured for ['system', 'exec', 'commands']"]},
     },
-    (VerifyAcctConsoleMethods, "failure-not-matching"): {
+    {
+        "name": "failure-not-matching",
+        "test": VerifyAcctConsoleMethods,
         "eos_data": [
             {
-                "commandsAcctMethods": {"privilege0-15": {"defaultMethods": [], "consoleAction": "startStop", "consoleMethods": ["group radius", "logging"]}},
-                "execAcctMethods": {"exec": {"defaultMethods": [], "consoleAction": "startStop", "consoleMethods": ["group tacacs+", "logging"]}},
-                "systemAcctMethods": {"system": {"defaultMethods": [], "consoleAction": "startStop", "consoleMethods": ["group tacacs+", "logging"]}},
+                "commandsAcctMethods": {
+                    "privilege0-15": {
+                        "defaultMethods": [],
+                        "consoleAction": "startStop",
+                        "consoleMethods": ["group radius", "logging"],
+                    },
+                },
+                "execAcctMethods": {
+                    "exec": {
+                        "defaultMethods": [],
+                        "consoleAction": "startStop",
+                        "consoleMethods": ["group tacacs+", "logging"],
+                    },
+                },
+                "systemAcctMethods": {
+                    "system": {
+                        "defaultMethods": [],
+                        "consoleAction": "startStop",
+                        "consoleMethods": ["group tacacs+", "logging"],
+                    },
+                },
                 "dot1xAcctMethods": {"dot1x": {"defaultMethods": [], "consoleMethods": []}},
-            }
+            },
         ],
         "inputs": {"methods": ["tacacs+", "logging"], "types": ["commands", "exec", "system"]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["AAA accounting console methods group tacacs+, logging are not matching for commands"]},
+        "expected": {"result": "failure", "messages": ["AAA accounting console methods ['group tacacs+', 'logging'] are not matching for ['commands']"]},
     },
-}
+]

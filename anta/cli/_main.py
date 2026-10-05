@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """ANTA CLI."""
@@ -17,7 +17,6 @@ from anta.cli.debug import debug as debug_command
 from anta.cli.exec import _exec as exec_command
 from anta.cli.get import get as get_command
 from anta.cli.nrfu import nrfu as nrfu_command
-from anta.cli.psirt import psirt as psirt_command
 from anta.cli.utils import AliasedGroup, ExitCode
 from anta.logger import Log, LogLevel, anta_log_exception, setup_logging
 
@@ -48,12 +47,11 @@ logger = logging.getLogger(__name__)
 )
 def anta(ctx: click.Context, log_level: LogLevel, log_file: pathlib.Path) -> None:
     """Arista Network Test Automation (ANTA) CLI."""
-    _ = ctx.ensure_object(dict)
+    ctx.ensure_object(dict)
     setup_logging(log_level, log_file)
 
 
 anta.add_command(nrfu_command)
-anta.add_command(psirt_command)
 anta.add_command(check_command)
 anta.add_command(exec_command)
 anta.add_command(get_command)

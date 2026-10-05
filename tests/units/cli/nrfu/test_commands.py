@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Tests for anta.cli.nrfu.commands."""
@@ -9,47 +9,15 @@ import json
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from unittest.mock import PropertyMock, patch
-
-from rich.cells import cell_len
+from unittest.mock import patch
 
 from anta.cli import anta
-from anta.cli.nrfu.utils import SPINNERS
 from anta.cli.utils import ExitCode
 
 if TYPE_CHECKING:
     from click.testing import CliRunner
 
 DATA_DIR: Path = Path(__file__).parents[3].resolve() / "data"
-
-
-def test_security_spinner() -> None:
-    """Test the security spinner frames and their display width."""
-    expected_frames = [
-        "(🔍   🥷)",
-        "( 🔍  🥷)",
-        "(  🔍 🥷)",
-        "(   🔍🥷)",
-        "(     💥)",
-        "(     🚨)",
-        "(    🛡️ )",
-        "(   🛡️  )",
-        "(  🛡️   )",
-        "( 🛡️    )",
-        "(🛡️     )",
-    ]
-
-    assert SPINNERS["security"] == {"interval": 150, "frames": expected_frames}
-    assert {cell_len(frame) for frame in expected_frames} == {9}
-
-
-def test_anta_nrfu_uses_anta_progress_spinner(click_runner: CliRunner) -> None:
-    """Use the standard ANTA spinner for NRFU test runs."""
-    with patch("anta.cli.nrfu.utils.anta_progress_bar") as progress_bar_mock:
-        result = click_runner.invoke(anta, ["nrfu", "--dry-run"])
-
-    assert result.exit_code == ExitCode.OK
-    progress_bar_mock.assert_called_once_with("anta")
 
 
 def test_anta_nrfu_table_help(click_runner: CliRunner) -> None:
@@ -78,16 +46,13 @@ def test_anta_nrfu_template_help(click_runner: CliRunner) -> None:
     result = click_runner.invoke(anta, ["nrfu", "tpl-report", "--help"])
     assert result.exit_code == ExitCode.OK
     assert "Usage: anta nrfu tpl-report" in result.output
-    assert "ANTA command to check network state with templated report." in result.output
-    for option in ("--template", "--output", "ANTA_NRFU_TPL_REPORT_TEMPLATE", "ANTA_NRFU_TPL_REPORT_OUTPUT"):
-        assert option in result.output
 
 
 def test_anta_nrfu_table(click_runner: CliRunner) -> None:
     """Test anta nrfu, catalog is given via env."""
     result = click_runner.invoke(anta, ["nrfu", "table"])
     assert result.exit_code == ExitCode.OK
-    assert "leaf1  │ VerifyEOSVersion │ Verifies the EOS version of the device." in result.output
+    assert "leaf1  │ VerifyEOSVersion │ success" in result.output
 
 
 def test_anta_nrfu_table_group_by_device(click_runner: CliRunner) -> None:
@@ -104,14 +69,6 @@ def test_anta_nrfu_table_group_by_test(click_runner: CliRunner) -> None:
     assert "Summary per test" in result.output
 
 
-def test_anta_nrfu_table_expand(click_runner: CliRunner) -> None:
-    """Test anta nrfu, catalog is given via env."""
-    with patch("anta.cli.nrfu.utils.ReportTable.generate_expanded") as mocked_generate_expanded:
-        result = click_runner.invoke(anta, ["nrfu", "table", "--expand"])
-    assert result.exit_code == ExitCode.OK
-    mocked_generate_expanded.assert_called_once()
-
-
 def test_anta_nrfu_text(click_runner: CliRunner) -> None:
     """Test anta nrfu, catalog is given via env."""
     result = click_runner.invoke(anta, ["nrfu", "text"])
@@ -125,22 +82,9 @@ def test_anta_nrfu_text_multiple_failures(click_runner: CliRunner) -> None:
     assert result.exit_code == ExitCode.TESTS_FAILED
     assert (
         """spine1 :: VerifyInterfacesSpeed :: FAILURE
-    Interface: Ethernet2 - Not found
-    Interface: Ethernet3 - Not found
-    Interface: Ethernet4 - Not found"""
-        in result.output
-    )
-
-
-def test_anta_nrfu_text_expand(click_runner: CliRunner) -> None:
-    """Test anta nrfu, catalog is given via env."""
-    result = click_runner.invoke(anta, ["nrfu", "text", "--expand"], env={"ANTA_CATALOG": str(DATA_DIR / "test_atomic.yml")})
-    assert result.exit_code == ExitCode.TESTS_FAILED
-    assert (
-        """leaf1 :: VerifyReachability :: FAILURE
-    Destination 10.255.255.0 from 10.255.255.1 in VRF default :: SUCCESS
-    Destination 10.255.255.2 from 10.255.255.3 in VRF default :: FAILURE
-      Packet loss detected - Transmitted: 1 Received: 2"""
+    Interface `Ethernet2` is not found.
+    Interface `Ethernet3` is not found.
+    Interface `Ethernet4` is not found."""
         in result.output
     )
 
@@ -198,8 +142,7 @@ def test_anta_nrfu_json_output_failure(click_runner: CliRunner, tmp_path: Path) 
 
 def test_anta_nrfu_template(click_runner: CliRunner) -> None:
     """Test anta nrfu, catalog is given via env."""
-    with patch("anta.result_manager.ResultManager.json", new_callable=PropertyMock, side_effect=AssertionError("JSON serialization should not be used")):
-        result = click_runner.invoke(anta, ["nrfu", "tpl-report", "--template", str(DATA_DIR / "template.j2")])
+    result = click_runner.invoke(anta, ["nrfu", "tpl-report", "--template", str(DATA_DIR / "template.j2")])
     assert result.exit_code == ExitCode.OK
     assert "* VerifyEOSVersion is SUCCESS for leaf1" in result.output
 
@@ -232,41 +175,10 @@ def test_anta_nrfu_md_report(click_runner: CliRunner, tmp_path: Path) -> None:
     assert md_output.exists()
 
 
-def test_anta_nrfu_md_report_expand(click_runner: CliRunner, tmp_path: Path) -> None:
-    """Test anta nrfu md-report."""
-    md_output = tmp_path / "test.md"
-    result = click_runner.invoke(anta, ["nrfu", "md-report", "--md-output", str(md_output), "--expand"])
-    assert result.exit_code == ExitCode.OK
-    assert "Markdown report saved to" in result.output
-    assert md_output.exists()
-
-    with md_output.open("r", encoding="utf-8") as f:
-        content = f.read()
-
-        target_header = '## 📉 Test Results Summary <a id="test-results-summary"></a>'
-        target_note = (
-            ">💡 **Note:** This report was generated with **Expanded Results** enabled. "
-            "The summary sections below aggregate results at the test level, so individual "
-            "checks (atomic results) are not counted in these totals."
-        )
-
-        assert target_header in content
-
-        # Find the position of the header
-        header_index = content.find(target_header)
-
-        # Create a slice of the content starting from the header
-        # This ensures we are only looking "under" or "after" that section title
-        content_after_header = content[header_index:]
-
-        # Assert the note exists in that specific slice
-        assert target_note in content_after_header
-
-
 def test_anta_nrfu_md_report_failure(click_runner: CliRunner, tmp_path: Path) -> None:
     """Test anta nrfu md-report failure."""
     md_output = tmp_path / "test.md"
-    with patch("anta.reporter.md_reporter.MDReportGenerator.generate_sections", side_effect=OSError()):
+    with patch("anta.reporter.md_reporter.MDReportGenerator.generate", side_effect=OSError()):
         result = click_runner.invoke(anta, ["nrfu", "md-report", "--md-output", str(md_output)])
 
     assert result.exit_code == ExitCode.USAGE_ERROR
@@ -294,29 +206,5 @@ def test_anta_nrfu_md_report_with_hide(click_runner: CliRunner, tmp_path: Path) 
     total_tests = int(match.group(1))
     total_tests_success = int(match.group(2))
 
-    assert total_tests == 3
-    assert total_tests_success == 3
-
-    # Collecting the rows inside the Test Results section
-    row_count = 0
-    lines = content.splitlines()
-
-    idx = lines.index('## 🧪 Test Results <a id="test-results"></a>')
-
-    for line in lines[idx + 1 :]:
-        if line.startswith("|") and ":-" not in line:
-            row_count += 1
-    # Reducing the row count by 1, as above conditions counts the TABLE_HEADING
-    assert (row_count - 1) == 0
-
-
-def test_anta_nrfu_table_sort(click_runner: CliRunner) -> None:
-    """Test anta nrfu table with --sort-by option."""
-    result = click_runner.invoke(
-        anta, ["nrfu", "table", "--sort-by", "name", "--sort-by", "test"], env={"ANTA_CATALOG": str(DATA_DIR / "test_catalog_table_sort.yml")}
-    )
-    target_line = result.output.splitlines()[-3]
-
-    # Check that device, test, description and status exist on the line
-    # The regex ensures they appear in that specific order
-    assert re.search(r"spine1.*VerifyInterfacesSpeed.*Verifies the speed, lanes, auto-negotiation.*failure", target_line)
+    assert total_tests == 0
+    assert total_tests_success == 0

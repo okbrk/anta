@@ -1,14 +1,12 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """See https://docs.pytest.org/en/stable/reference/fixtures.html#conftest-py-sharing-fixtures-across-multiple-files."""
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from unittest import mock
 from unittest.mock import patch
 
 import pytest
@@ -17,7 +15,7 @@ import yaml
 from anta.device import AntaDevice, AsyncEOSDevice
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Iterator
+    from collections.abc import Iterator
 
     from anta.models import AntaCommand
 
@@ -85,21 +83,3 @@ def yaml_file(request: pytest.FixtureRequest, tmp_path: Path) -> Path:
     content: dict[str, Any] = request.param
     file.write_text(yaml.dump(content, allow_unicode=True))
     return file
-
-
-@pytest.fixture
-def setenvvar(monkeypatch: pytest.MonkeyPatch) -> Generator[pytest.MonkeyPatch, None, None]:
-    """Set environment variables in an isolated environment.
-
-    On Windows, preserve ``SYSTEMROOT`` because socket service lookups use it to locate
-    the system services database. Also preserve ``USERNAME`` so user lookup does not
-    fall back to importing the unavailable POSIX-only ``pwd`` module. Preserve
-    ``USERPROFILE``, ``HOMEDRIVE``, and ``HOMEPATH`` so home directories can be expanded.
-    """
-    preserved_environment: dict[str, str] = {}
-    if os.name == "nt":
-        for variable in ("SYSTEMROOT", "USERNAME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH"):
-            if (value := os.environ.get(variable)) is not None:
-                preserved_environment[variable] = value
-    with mock.patch.dict(os.environ, preserved_environment, clear=True):
-        yield monkeypatch

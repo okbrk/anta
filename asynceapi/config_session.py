@@ -1,4 +1,4 @@
-# Copyright (c) 2024-2026 Arista Networks, Inc.
+# Copyright (c) 2024-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 # Initially written by Jeremy Schulman at https://github.com/jeremyschulman/aio-eapi
@@ -10,10 +10,9 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from ._types import EapiComplexCommand, EapiJsonOutput, EapiSimpleCommand
     from .device import Device
 
 # -----------------------------------------------------------------------------
@@ -79,7 +78,7 @@ class SessionConfig:
     #                               Public Methods
     # -------------------------------------------------------------------------
 
-    async def status_all(self) -> EapiJsonOutput:
+    async def status_all(self) -> dict[str, Any]:
         """Get the status of all the session config on the device.
 
         Run the following command on the device:
@@ -87,7 +86,7 @@ class SessionConfig:
 
         Returns
         -------
-        EapiJsonOutput
+        dict[str, Any]
             Dictionary of native EOS eAPI response; see `status` method for
             details.
 
@@ -117,9 +116,9 @@ class SessionConfig:
         }
         ```
         """
-        return await self._cli(command="show configuration sessions detail")
+        return await self._cli("show configuration sessions detail")  # type: ignore[return-value] # json outformat returns dict[str, Any]
 
-    async def status(self) -> EapiJsonOutput | None:
+    async def status(self) -> dict[str, Any] | None:
         """Get the status of a session config on the device.
 
         Run the following command on the device:
@@ -130,7 +129,7 @@ class SessionConfig:
 
         Returns
         -------
-        EapiJsonOutput | None
+        dict[str, Any] | None
             Dictionary instance of the session status. If the session does not exist,
             then this method will return None.
 
@@ -202,7 +201,7 @@ class SessionConfig:
         # prepare the initial set of command to enter the config session and
         # rollback clean if the `replace` argument is True.
 
-        commands: list[EapiSimpleCommand | EapiComplexCommand] = [self._cli_config_session]
+        commands: list[str | dict[str, Any]] = [self._cli_config_session]
         if replace:
             commands.append(self.CLI_CFG_FACTORY_RESET)
 
@@ -233,7 +232,7 @@ class SessionConfig:
         if timer:
             command += f" timer {timer}"
 
-        await self._cli(command=command)
+        await self._cli(command)
 
     async def abort(self) -> None:
         """Abort the configuration session.
@@ -241,7 +240,7 @@ class SessionConfig:
         Run the following command on the device:
             # configure session <name> abort
         """
-        await self._cli(command=f"{self._cli_config_session} abort")
+        await self._cli(f"{self._cli_config_session} abort")
 
     async def diff(self) -> str:
         """Return the "diff" of the session config relative to the running config.
@@ -258,7 +257,7 @@ class SessionConfig:
         ----------
             * https://www.gnu.org/software/diffutils/manual/diffutils.txt
         """
-        return await self._cli(command=f"show session-config named {self.name} diffs", ofmt="text")
+        return await self._cli(f"show session-config named {self.name} diffs", ofmt="text")  # type: ignore[return-value] # text outformat returns str
 
     async def load_file(self, filename: str, *, replace: bool = False) -> None:
         """Load the configuration from <filename> into the session configuration.
@@ -282,12 +281,12 @@ class SessionConfig:
             If there are any issues with loading the configuration file then a
             RuntimeError is raised with the error messages content.
         """
-        commands: list[EapiSimpleCommand | EapiComplexCommand] = [self._cli_config_session]
+        commands: list[str | dict[str, Any]] = [self._cli_config_session]
         if replace:
             commands.append(self.CLI_CFG_FACTORY_RESET)
 
         commands.append(f"copy {filename} session-config")
-        res = await self._cli(commands=commands)
+        res: list[dict[str, Any]] = await self._cli(commands=commands)  # type: ignore[assignment] # JSON outformat of multiple commands returns list[dict[str, Any]]
         checks_re = re.compile(r"error|abort|invalid", flags=re.IGNORECASE)
         messages = res[-1]["messages"]
 
@@ -296,4 +295,4 @@ class SessionConfig:
 
     async def write(self) -> None:
         """Save the running config to the startup config by issuing the command "write" to the device."""
-        await self._cli(command="write")
+        await self._cli("write")

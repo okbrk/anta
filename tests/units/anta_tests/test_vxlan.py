@@ -1,51 +1,54 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Tests for anta.tests.vxlan.py."""
 
 from __future__ import annotations
 
-from typing import TypeAlias
+from typing import Any
 
-from anta.models import AntaTest
-from anta.result_manager.models import AntaTestStatus
-from anta.tests.vxlan import (
-    VerifyVxlan1ConnSettings,
-    VerifyVxlan1Interface,
-    VerifyVxlan1VVTEPIPAddresses,
-    VerifyVxlanConfigSanity,
-    VerifyVxlanVniBinding,
-    VerifyVxlanVtep,
-)
-from tests.units.anta_tests import AntaUnitTest, test
+from anta.tests.vxlan import VerifyVxlan1ConnSettings, VerifyVxlan1Interface, VerifyVxlanConfigSanity, VerifyVxlanVniBinding, VerifyVxlanVtep
+from tests.units.anta_tests import test
 
-AntaUnitTestData: TypeAlias = dict[tuple[type[AntaTest], str], AntaUnitTest]
-
-DATA: AntaUnitTestData = {
-    (VerifyVxlan1Interface, "success"): {
+DATA: list[dict[str, Any]] = [
+    {
+        "name": "success",
+        "test": VerifyVxlan1Interface,
         "eos_data": [{"interfaceDescriptions": {"Vxlan1": {"lineProtocolStatus": "up", "interfaceStatus": "up"}}}],
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyVxlan1Interface, "skipped"): {
+    {
+        "name": "skipped",
+        "test": VerifyVxlan1Interface,
         "eos_data": [{"interfaceDescriptions": {"Loopback0": {"lineProtocolStatus": "up", "interfaceStatus": "up"}}}],
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["Interface: Vxlan1 - Not configured"]},
+        "inputs": None,
+        "expected": {"result": "skipped", "messages": ["Vxlan1 interface is not configured"]},
     },
-    (VerifyVxlan1Interface, "failure-down-up"): {
+    {
+        "name": "failure-down-up",
+        "test": VerifyVxlan1Interface,
         "eos_data": [{"interfaceDescriptions": {"Vxlan1": {"lineProtocolStatus": "down", "interfaceStatus": "up"}}}],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Interface: Vxlan1 - Incorrect Line protocol status/Status - Expected: up/up Actual: down/up"]},
+        "inputs": None,
+        "expected": {"result": "failure", "messages": ["Vxlan1 interface is down/up"]},
     },
-    (VerifyVxlan1Interface, "failure-up-down"): {
+    {
+        "name": "failure-up-down",
+        "test": VerifyVxlan1Interface,
         "eos_data": [{"interfaceDescriptions": {"Vxlan1": {"lineProtocolStatus": "up", "interfaceStatus": "down"}}}],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Interface: Vxlan1 - Incorrect Line protocol status/Status - Expected: up/up Actual: up/down"]},
+        "inputs": None,
+        "expected": {"result": "failure", "messages": ["Vxlan1 interface is up/down"]},
     },
-    (VerifyVxlan1Interface, "failure-down-down"): {
+    {
+        "name": "failure-down-down",
+        "test": VerifyVxlan1Interface,
         "eos_data": [{"interfaceDescriptions": {"Vxlan1": {"lineProtocolStatus": "down", "interfaceStatus": "down"}}}],
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Interface: Vxlan1 - Incorrect Line protocol status/Status - Expected: up/up Actual: down/down"],
-        },
+        "inputs": None,
+        "expected": {"result": "failure", "messages": ["Vxlan1 interface is down/down"]},
     },
-    (VerifyVxlanConfigSanity, "success"): {
+    {
+        "name": "success",
+        "test": VerifyVxlanConfigSanity,
         "eos_data": [
             {
                 "categories": {
@@ -103,11 +106,14 @@ DATA: AntaUnitTestData = {
                     },
                 },
                 "warnings": [],
-            }
+            },
         ],
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyVxlanConfigSanity, "failure"): {
+    {
+        "name": "failure",
+        "test": VerifyVxlanConfigSanity,
         "eos_data": [
             {
                 "categories": {
@@ -165,245 +171,194 @@ DATA: AntaUnitTestData = {
                     },
                 },
                 "warnings": ["Your configuration contains warnings. This does not mean misconfigurations. But you may wish to re-check your configurations."],
-            }
+            },
         ],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Vxlan Category: localVtep - Config sanity check is not passing"]},
+        "inputs": None,
+        "expected": {
+            "result": "failure",
+            "messages": [
+                "VXLAN config sanity check is not passing: {'localVtep': {'description': 'Local VTEP Configuration Check', "
+                "'allCheckPass': False, 'detail': '', 'hasWarning': True, 'items': [{'name': 'Loopback IP Address', 'checkPass': True, "
+                "'hasWarning': False, 'detail': ''}, {'name': 'VLAN-VNI Map', 'checkPass': False, 'hasWarning': False, 'detail': "
+                "'No VLAN-VNI mapping in Vxlan1'}, {'name': 'Flood List', 'checkPass': False, 'hasWarning': True, 'detail': "
+                "'No VXLAN VLANs in Vxlan1'}, {'name': 'Routing', 'checkPass': True, 'hasWarning': False, 'detail': ''}, {'name': "
+                "'VNI VRF ACL', 'checkPass': True, 'hasWarning': False, 'detail': ''}, {'name': 'VRF-VNI Dynamic VLAN', 'checkPass': True, "
+                "'hasWarning': False, 'detail': ''}, {'name': 'Decap VRF-VNI Map', 'checkPass': True, 'hasWarning': False, 'detail': ''}]}}",
+            ],
+        },
     },
-    (VerifyVxlanConfigSanity, "skipped"): {
+    {
+        "name": "skipped",
+        "test": VerifyVxlanConfigSanity,
         "eos_data": [{"categories": {}}],
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["VXLAN is not configured"]},
+        "inputs": None,
+        "expected": {"result": "skipped", "messages": ["VXLAN is not configured"]},
     },
-    (VerifyVxlanVniBinding, "success"): {
+    {
+        "name": "success",
+        "test": VerifyVxlanVniBinding,
         "eos_data": [
             {
                 "vxlanIntfs": {
                     "Vxlan1": {
                         "vniBindings": {
-                            "10020": {"vlan": 20, "dynamicVlan": False, "source": "static", "interfaces": {"Ethernet31": {"dot1q": 0}, "Vxlan1": {"dot1q": 20}}}
-                        },
-                        "vniBindingsToVrf": {"500": {"vrfName": "TEST", "vlan": 1199, "source": "evpn"}, "600": {"vrfName": "PROD", "vlan": 1198, "source": "evpn"}},
-                    }
-                }
-            }
-        ],
-        "inputs": {"bindings": {10020: 20, 500: 1199, 600: "PROD"}},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyVxlanVniBinding, "failure-no-binding"): {
-        "eos_data": [
-            {
-                "vxlanIntfs": {
-                    "Vxlan1": {
-                        "vniBindings": {
-                            "10020": {"vlan": 20, "dynamicVlan": False, "source": "static", "interfaces": {"Ethernet31": {"dot1q": 0}, "Vxlan1": {"dot1q": 20}}}
+                            "10020": {"vlan": 20, "dynamicVlan": False, "source": "static", "interfaces": {"Ethernet31": {"dot1q": 0}, "Vxlan1": {"dot1q": 20}}},
                         },
                         "vniBindingsToVrf": {"500": {"vrfName": "PROD", "vlan": 1199, "source": "evpn"}},
-                    }
-                }
-            }
-        ],
-        "inputs": {"bindings": {10010: 10, 10020: 20, 500: 1199}},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Interface: Vxlan1 VNI: 10010 - Binding not found"]},
-    },
-    (VerifyVxlanVniBinding, "failure-vrf-wrong-binding"): {
-        "eos_data": [
-            {
-                "vxlanIntfs": {
-                    "Vxlan1": {
-                        "vniBindings": {
-                            "10020": {"vlan": 20, "dynamicVlan": False, "source": "static", "interfaces": {"Ethernet31": {"dot1q": 0}, "Vxlan1": {"dot1q": 20}}}
-                        },
-                        "vniBindingsToVrf": {"500": {"vrfName": "PROD", "vlan": 1199, "source": "evpn"}, "600": {"vrfName": "TEST", "vlan": 1199, "source": "evpn"}},
-                    }
-                }
-            }
-        ],
-        "inputs": {"bindings": {10020: 20, 500: 1199, 600: "PROD"}},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Interface: Vxlan1 VNI: 600 - Wrong VRF binding - Expected: PROD Actual: TEST"]},
-    },
-    (VerifyVxlanVniBinding, "failure-wrong-binding"): {
-        "eos_data": [
-            {
-                "vxlanIntfs": {
-                    "Vxlan1": {
-                        "vniBindings": {
-                            "10020": {"vlan": 30, "dynamicVlan": False, "source": "static", "interfaces": {"Ethernet31": {"dot1q": 0}, "Vxlan1": {"dot1q": 20}}}
-                        },
-                        "vniBindingsToVrf": {"500": {"vrfName": "PROD", "vlan": 1199, "source": "evpn"}},
-                    }
-                }
-            }
+                    },
+                },
+            },
         ],
         "inputs": {"bindings": {10020: 20, 500: 1199}},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Interface: Vxlan1 VNI: 10020 - Wrong VLAN binding - Expected: 20 Actual: 30"]},
+        "expected": {"result": "success"},
     },
-    (VerifyVxlanVniBinding, "failure-no-and-wrong-binding"): {
+    {
+        "name": "failure-no-binding",
+        "test": VerifyVxlanVniBinding,
         "eos_data": [
             {
                 "vxlanIntfs": {
                     "Vxlan1": {
                         "vniBindings": {
-                            "10020": {"vlan": 30, "dynamicVlan": False, "source": "static", "interfaces": {"Ethernet31": {"dot1q": 0}, "Vxlan1": {"dot1q": 20}}}
+                            "10020": {"vlan": 20, "dynamicVlan": False, "source": "static", "interfaces": {"Ethernet31": {"dot1q": 0}, "Vxlan1": {"dot1q": 20}}},
                         },
                         "vniBindingsToVrf": {"500": {"vrfName": "PROD", "vlan": 1199, "source": "evpn"}},
-                    }
-                }
-            }
+                    },
+                },
+            },
+        ],
+        "inputs": {"bindings": {10010: 10, 10020: 20, 500: 1199}},
+        "expected": {"result": "failure", "messages": ["The following VNI(s) have no binding: ['10010']"]},
+    },
+    {
+        "name": "failure-wrong-binding",
+        "test": VerifyVxlanVniBinding,
+        "eos_data": [
+            {
+                "vxlanIntfs": {
+                    "Vxlan1": {
+                        "vniBindings": {
+                            "10020": {"vlan": 30, "dynamicVlan": False, "source": "static", "interfaces": {"Ethernet31": {"dot1q": 0}, "Vxlan1": {"dot1q": 20}}},
+                        },
+                        "vniBindingsToVrf": {"500": {"vrfName": "PROD", "vlan": 1199, "source": "evpn"}},
+                    },
+                },
+            },
+        ],
+        "inputs": {"bindings": {10020: 20, 500: 1199}},
+        "expected": {"result": "failure", "messages": ["The following VNI(s) have the wrong VLAN binding: [{'10020': 30}]"]},
+    },
+    {
+        "name": "failure-no-and-wrong-binding",
+        "test": VerifyVxlanVniBinding,
+        "eos_data": [
+            {
+                "vxlanIntfs": {
+                    "Vxlan1": {
+                        "vniBindings": {
+                            "10020": {"vlan": 30, "dynamicVlan": False, "source": "static", "interfaces": {"Ethernet31": {"dot1q": 0}, "Vxlan1": {"dot1q": 20}}},
+                        },
+                        "vniBindingsToVrf": {"500": {"vrfName": "PROD", "vlan": 1199, "source": "evpn"}},
+                    },
+                },
+            },
         ],
         "inputs": {"bindings": {10010: 10, 10020: 20, 500: 1199}},
         "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Interface: Vxlan1 VNI: 10010 - Binding not found", "Interface: Vxlan1 VNI: 10020 - Wrong VLAN binding - Expected: 20 Actual: 30"],
+            "result": "failure",
+            "messages": ["The following VNI(s) have no binding: ['10010']", "The following VNI(s) have the wrong VLAN binding: [{'10020': 30}]"],
         },
     },
-    (VerifyVxlanVniBinding, "failure-wrong-vni-vrf-binding"): {
-        "eos_data": [
-            {
-                "vxlanIntfs": {
-                    "Vxlan1": {
-                        "vniBindings": {
-                            "10020": {"vlan": 30, "dynamicVlan": False, "source": "static", "interfaces": {"Ethernet31": {"dot1q": 0}, "Vxlan1": {"dot1q": 20}}}
-                        },
-                        "vniBindingsToVrf": {"500": {"vrfName": "PROD", "vlan": 1199, "source": "evpn"}},
-                    }
-                }
-            }
-        ],
-        "inputs": {"bindings": {10020: "PROD", 500: 30}},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Interface: Vxlan1 VNI: 10020 - Binding not found", "Interface: Vxlan1 VNI: 500 - Wrong VLAN binding - Expected: 30 Actual: 1199"],
-        },
-    },
-    (VerifyVxlanVniBinding, "skipped"): {
+    {
+        "name": "skipped",
+        "test": VerifyVxlanVniBinding,
         "eos_data": [{"vxlanIntfs": {}}],
         "inputs": {"bindings": {10020: 20, 500: 1199}},
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["Interface: Vxlan1 - Not configured"]},
+        "expected": {"result": "skipped", "messages": ["Vxlan1 interface is not configured"]},
     },
-    (VerifyVxlanVtep, "success"): {
+    {
+        "name": "success",
+        "test": VerifyVxlanVtep,
         "eos_data": [{"vteps": {}, "interfaces": {"Vxlan1": {"vteps": ["10.1.1.5", "10.1.1.6"]}}}],
         "inputs": {"vteps": ["10.1.1.5", "10.1.1.6"]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyVxlanVtep, "failure-missing-vtep"): {
+    {
+        "name": "failure-missing-vtep",
+        "test": VerifyVxlanVtep,
         "eos_data": [{"vteps": {}, "interfaces": {"Vxlan1": {"vteps": ["10.1.1.5", "10.1.1.6"]}}}],
         "inputs": {"vteps": ["10.1.1.5", "10.1.1.6", "10.1.1.7"]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["The following VTEP peer(s) are missing from the Vxlan1 interface: 10.1.1.7"]},
+        "expected": {"result": "failure", "messages": ["The following VTEP peer(s) are missing from the Vxlan1 interface: ['10.1.1.7']"]},
     },
-    (VerifyVxlanVtep, "failure-no-vtep"): {
+    {
+        "name": "failure-no-vtep",
+        "test": VerifyVxlanVtep,
         "eos_data": [{"vteps": {}, "interfaces": {"Vxlan1": {"vteps": []}}}],
         "inputs": {"vteps": ["10.1.1.5", "10.1.1.6"]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["The following VTEP peer(s) are missing from the Vxlan1 interface: 10.1.1.5, 10.1.1.6"]},
+        "expected": {"result": "failure", "messages": ["The following VTEP peer(s) are missing from the Vxlan1 interface: ['10.1.1.5', '10.1.1.6']"]},
     },
-    (VerifyVxlanVtep, "failure-no-input-vtep"): {
+    {
+        "name": "failure-no-input-vtep",
+        "test": VerifyVxlanVtep,
         "eos_data": [{"vteps": {}, "interfaces": {"Vxlan1": {"vteps": ["10.1.1.5"]}}}],
         "inputs": {"vteps": []},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Unexpected VTEP peer(s) on Vxlan1 interface: 10.1.1.5"]},
+        "expected": {"result": "failure", "messages": ["Unexpected VTEP peer(s) on Vxlan1 interface: ['10.1.1.5']"]},
     },
-    (VerifyVxlanVtep, "failure-missmatch"): {
+    {
+        "name": "failure-missmatch",
+        "test": VerifyVxlanVtep,
         "eos_data": [{"vteps": {}, "interfaces": {"Vxlan1": {"vteps": ["10.1.1.6", "10.1.1.7", "10.1.1.8"]}}}],
         "inputs": {"vteps": ["10.1.1.5", "10.1.1.6"]},
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
-                "The following VTEP peer(s) are missing from the Vxlan1 interface: 10.1.1.5",
-                "Unexpected VTEP peer(s) on Vxlan1 interface: 10.1.1.7, 10.1.1.8",
+                "The following VTEP peer(s) are missing from the Vxlan1 interface: ['10.1.1.5']",
+                "Unexpected VTEP peer(s) on Vxlan1 interface: ['10.1.1.7', '10.1.1.8']",
             ],
         },
     },
-    (VerifyVxlanVtep, "skipped"): {
+    {
+        "name": "skipped",
+        "test": VerifyVxlanVtep,
         "eos_data": [{"vteps": {}, "interfaces": {}}],
         "inputs": {"vteps": ["10.1.1.5", "10.1.1.6", "10.1.1.7"]},
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["Interface: Vxlan1 - Not configured"]},
+        "expected": {"result": "skipped", "messages": ["Vxlan1 interface is not configured"]},
     },
-    (VerifyVxlan1ConnSettings, "success"): {
+    {
+        "name": "success",
+        "test": VerifyVxlan1ConnSettings,
         "eos_data": [{"interfaces": {"Vxlan1": {"srcIpIntf": "Loopback1", "udpPort": 4789}}}],
         "inputs": {"source_interface": "Loopback1", "udp_port": 4789},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyVxlan1ConnSettings, "success-dps-src-intf"): {
-        "eos_data": [{"interfaces": {"Vxlan1": {"srcIpIntf": "Dps1", "udpPort": 4789}}}],
-        "inputs": {"source_interface": "Dps1", "udp_port": 4789},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyVxlan1ConnSettings, "skipped"): {
+    {
+        "name": "skipped",
+        "test": VerifyVxlan1ConnSettings,
         "eos_data": [{"interfaces": {}}],
         "inputs": {"source_interface": "Loopback1", "udp_port": 4789},
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["Interface: Vxlan1 - Not configured"]},
+        "expected": {"result": "skipped", "messages": ["Vxlan1 interface is not configured."]},
     },
-    (VerifyVxlan1ConnSettings, "failure-wrong-interface"): {
+    {
+        "name": "failure-wrong-interface",
+        "test": VerifyVxlan1ConnSettings,
         "eos_data": [{"interfaces": {"Vxlan1": {"srcIpIntf": "Loopback10", "udpPort": 4789}}}],
         "inputs": {"source_interface": "lo1", "udp_port": 4789},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Interface: Vxlan1 - Incorrect Source interface - Expected: Loopback1 Actual: Loopback10"]},
+        "expected": {
+            "result": "failure",
+            "messages": ["Source interface is not correct. Expected `Loopback1` as source interface but found `Loopback10` instead."],
+        },
     },
-    (VerifyVxlan1ConnSettings, "failure-wrong-port"): {
+    {
+        "name": "failure-wrong-port",
+        "test": VerifyVxlan1ConnSettings,
         "eos_data": [{"interfaces": {"Vxlan1": {"srcIpIntf": "Loopback10", "udpPort": 4789}}}],
         "inputs": {"source_interface": "Lo1", "udp_port": 4780},
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
-                "Interface: Vxlan1 - Incorrect Source interface - Expected: Loopback1 Actual: Loopback10",
-                "Interface: Vxlan1 - Incorrect UDP port - Expected: 4780 Actual: 4789",
+                "Source interface is not correct. Expected `Loopback1` as source interface but found `Loopback10` instead.",
+                "UDP port is not correct. Expected `4780` as UDP port but found `4789` instead.",
             ],
         },
     },
-    (VerifyVxlan1ConnSettings, "failure-dps-src-intf"): {
-        "eos_data": [{"interfaces": {"Vxlan1": {"srcIpIntf": "Loopback10", "udpPort": 4789}}}],
-        "inputs": {"source_interface": "dps1", "udp_port": 4789},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Interface: Vxlan1 - Incorrect Source interface - Expected: Dps1 Actual: Loopback10"]},
-    },
-    (VerifyVxlan1VVTEPIPAddresses, "success-ipv4-only"): {
-        "eos_data": [{"interfaces": {"Vxlan1": {"vArpVtepAddr": "5.5.5.5"}}}],
-        "inputs": {"ipv4_address": "5.5.5.5"},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyVxlan1VVTEPIPAddresses, "success-ipv6-only"): {
-        "eos_data": [{"interfaces": {"Vxlan1": {"vArpVtepAddrV6": "fd00:dc:1::1"}}}],
-        "inputs": {"ipv6_address": "fd00:dc:1::1"},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyVxlan1VVTEPIPAddresses, "success-dual-stack"): {
-        "eos_data": [{"interfaces": {"Vxlan1": {"vArpVtepAddr": "5.5.5.5", "vArpVtepAddrV6": "fd00:dc:1::1"}}}],
-        "inputs": {"ipv4_address": "5.5.5.5", "ipv6_address": "fd00:dc:1::1"},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyVxlan1VVTEPIPAddresses, "skipped"): {
-        "eos_data": [{"interfaces": {}}],
-        "inputs": {"ipv4_address": "5.5.5.5"},
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["Interface: Vxlan1 - Not configured"]},
-    },
-    (VerifyVxlan1VVTEPIPAddresses, "failure-incorrect-ipv4"): {
-        "eos_data": [{"interfaces": {"Vxlan1": {"vArpVtepAddr": "6.6.6.6"}}}],
-        "inputs": {"ipv4_address": "5.5.5.5"},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Interface: Vxlan1 - Incorrect VVTEP IPv4 address - Expected: 5.5.5.5 Actual: 6.6.6.6"],
-        },
-    },
-    (VerifyVxlan1VVTEPIPAddresses, "failure-incorrect-ipv6"): {
-        "eos_data": [{"interfaces": {"Vxlan1": {"vArpVtepAddrV6": "fd00:dc:1::2"}}}],
-        "inputs": {"ipv6_address": "fd00:dc:1::1"},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Interface: Vxlan1 - Incorrect VVTEP IPv6 address - Expected: fd00:dc:1::1 Actual: fd00:dc:1::2"],
-        },
-    },
-    (VerifyVxlan1VVTEPIPAddresses, "failure-not-configured-ipv4"): {
-        "eos_data": [{"interfaces": {"Vxlan1": {"srcIpIntf": "Loopback10", "udpPort": 4789}}}],
-        "inputs": {"ipv4_address": "5.5.5.5"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Interface: Vxlan1 - VVTEP IPv4 address is not configured"]},
-    },
-    (VerifyVxlan1VVTEPIPAddresses, "failure-not-configured-ipv6"): {
-        "eos_data": [{"interfaces": {"Vxlan1": {"srcIpIntf": "Loopback10", "udpPort": 4789}}}],
-        "inputs": {"ipv6_address": "fd00:dc:1::1"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Interface: Vxlan1 - VVTEP IPv6 address is not configured"]},
-    },
-    (VerifyVxlan1VVTEPIPAddresses, "failure-dual-stack-partial"): {
-        "eos_data": [{"interfaces": {"Vxlan1": {"vArpVtepAddr": "5.5.5.5", "vArpVtepAddrV6": "fd00:dc:1::2"}}}],
-        "inputs": {"ipv4_address": "5.5.5.5", "ipv6_address": "fd00:dc:1::1"},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Interface: Vxlan1 - Incorrect VVTEP IPv6 address - Expected: fd00:dc:1::1 Actual: fd00:dc:1::2"],
-        },
-    },
-}
+]

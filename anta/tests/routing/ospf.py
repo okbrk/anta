@@ -1,20 +1,94 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Module related to OSPF tests."""
 
-# Pyright does not understand AntaTest.Input typing
-# pyright: reportAttributeAccessIssue=false
+# Mypy does not understand AntaTest.Input typing
+# mypy: disable-error-code=attr-defined
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
-from anta.input_models.routing.ospf import OSPFNeighbor
 from anta.models import AntaCommand, AntaTest
-from anta.tools import get_value
 
 if TYPE_CHECKING:
     from anta.models import AntaTemplate
+
+
+def _count_ospf_neighbor(ospf_neighbor_json: dict[str, Any]) -> int:
+    """Count the number of OSPF neighbors.
+
+    Parameters
+    ----------
+    ospf_neighbor_json
+        The JSON output of the `show ip ospf neighbor` command.
+
+    Returns
+    -------
+    int
+        The number of OSPF neighbors.
+
+    """
+    count = 0
+    for vrf_data in ospf_neighbor_json["vrfs"].values():
+        for instance_data in vrf_data["instList"].values():
+            count += len(instance_data.get("ospfNeighborEntries", []))
+    return count
+
+
+def _get_not_full_ospf_neighbors(ospf_neighbor_json: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the OSPF neighbors whose adjacency state is not `full`.
+
+    Parameters
+    ----------
+    ospf_neighbor_json
+        The JSON output of the `show ip ospf neighbor` command.
+
+    Returns
+    -------
+    list[dict[str, Any]]
+        A list of OSPF neighbors whose adjacency state is not `full`.
+
+    """
+    return [
+        {
+            "vrf": vrf,
+            "instance": instance,
+            "neighbor": neighbor_data["routerId"],
+            "state": state,
+        }
+        for vrf, vrf_data in ospf_neighbor_json["vrfs"].items()
+        for instance, instance_data in vrf_data["instList"].items()
+        for neighbor_data in instance_data.get("ospfNeighborEntries", [])
+        if (state := neighbor_data["adjacencyState"]) != "full"
+    ]
+
+
+def _get_ospf_max_lsa_info(ospf_process_json: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return information about OSPF instances and their LSAs.
+
+    Parameters
+    ----------
+    ospf_process_json
+        OSPF process information in JSON format.
+
+    Returns
+    -------
+    list[dict[str, Any]]
+        A list of dictionaries containing OSPF LSAs information.
+
+    """
+    return [
+        {
+            "vrf": vrf,
+            "instance": instance,
+            "maxLsa": instance_data.get("maxLsaInformation", {}).get("maxLsa"),
+            "maxLsaThreshold": instance_data.get("maxLsaInformation", {}).get("maxLsaThreshold"),
+            "numLsa": instance_data.get("lsaInformation", {}).get("numLsa"),
+        }
+        for vrf, vrf_data in ospf_process_json.get("vrfs", {}).items()
+        for instance, instance_data in vrf_data.get("instList", {}).items()
+    ]
 
 
 class VerifyOSPFNeighborState(AntaTest):
@@ -41,29 +115,14 @@ class VerifyOSPFNeighborState(AntaTest):
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyOSPFNeighborState."""
-        self.result.is_success()
-
-        # If OSPF is not configured on device, test skipped.
-        if not (command_output := get_value(self.instance_commands[0].json_output, "vrfs")):
-            self.result.is_skipped("OSPF not configured")
+        command_output = self.instance_commands[0].json_output
+        if _count_ospf_neighbor(command_output) == 0:
+            self.result.is_skipped("no OSPF neighbor found")
             return
-
-        no_neighbor = True
-        for vrf, vrf_data in command_output.items():
-            for instance, instance_data in vrf_data["instList"].items():
-                neighbors = instance_data["ospfNeighborEntries"]
-                if not neighbors:
-                    continue
-                no_neighbor = False
-                interfaces = [(neighbor["routerId"], state) for neighbor in neighbors if (state := neighbor["adjacencyState"]) != "full"]
-                for interface in interfaces:
-                    self.result.is_failure(
-                        f"Instance: {instance} VRF: {vrf} Neighbor ID: {interface[0]} - Incorrect adjacency state - Expected: Full Actual: {interface[1]}"
-                    )
-
-        # If OSPF neighbors are not configured on device, test skipped.
-        if no_neighbor:
-            self.result.is_skipped("No OSPF neighbor detected")
+        self.result.is_success()
+        not_full_neighbors = _get_not_full_ospf_neighbors(command_output)
+        if not_full_neighbors:
+            self.result.is_failure(f"Some neighbors are not correctly configured: {not_full_neighbors}.")
 
 
 class VerifyOSPFNeighborCount(AntaTest):
@@ -97,34 +156,20 @@ class VerifyOSPFNeighborCount(AntaTest):
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyOSPFNeighborCount."""
+        command_output = self.instance_commands[0].json_output
+        if (neighbor_count := _count_ospf_neighbor(command_output)) == 0:
+            self.result.is_skipped("no OSPF neighbor found")
+            return
         self.result.is_success()
-        # If OSPF is not configured on device, test skipped.
-        if not (command_output := get_value(self.instance_commands[0].json_output, "vrfs")):
-            self.result.is_skipped("OSPF not configured")
-            return
-
-        no_neighbor = True
-        interfaces = []
-        for vrf_data in command_output.values():
-            for instance_data in vrf_data["instList"].values():
-                neighbors = instance_data["ospfNeighborEntries"]
-                if not neighbors:
-                    continue
-                no_neighbor = False
-                interfaces.extend([neighbor["routerId"] for neighbor in neighbors if neighbor["adjacencyState"] == "full"])
-
-        # If OSPF neighbors are not configured on device, test skipped.
-        if no_neighbor:
-            self.result.is_skipped("No OSPF neighbor detected")
-            return
-
-        # If the number of OSPF neighbors expected to be in the FULL state does not match with actual one, test fails.
-        if len(interfaces) != self.inputs.number:
-            self.result.is_failure(f"Neighbor count mismatch - Expected: {self.inputs.number} Actual: {len(interfaces)}")
+        if neighbor_count != self.inputs.number:
+            self.result.is_failure(f"device has {neighbor_count} neighbors (expected {self.inputs.number})")
+        not_full_neighbors = _get_not_full_ospf_neighbors(command_output)
+        if not_full_neighbors:
+            self.result.is_failure(f"Some neighbors are not correctly configured: {not_full_neighbors}.")
 
 
 class VerifyOSPFMaxLSA(AntaTest):
-    """Verifies all OSPF instances did not cross the maximum LSA threshold.
+    """Verifies LSAs present in the OSPF link state database did not cross the maximum LSA Threshold.
 
     Expected Results
     ----------------
@@ -141,98 +186,23 @@ class VerifyOSPFMaxLSA(AntaTest):
     ```
     """
 
+    description = "Verifies all OSPF instances did not cross the maximum LSA threshold."
     categories: ClassVar[list[str]] = ["ospf"]
     commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaCommand(command="show ip ospf", revision=1)]
 
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyOSPFMaxLSA."""
-        self.result.is_success()
-
-        # If OSPF is not configured on device, test skipped.
-        if not (command_output := get_value(self.instance_commands[0].json_output, "vrfs")):
-            self.result.is_skipped("OSPF not configured")
+        command_output = self.instance_commands[0].json_output
+        ospf_instance_info = _get_ospf_max_lsa_info(command_output)
+        if not ospf_instance_info:
+            self.result.is_skipped("No OSPF instance found.")
             return
-
-        for vrf_data in command_output.values():
-            for instance, instance_data in vrf_data.get("instList", {}).items():
-                max_lsa = instance_data["maxLsaInformation"]["maxLsa"]
-                max_lsa_threshold = instance_data["maxLsaInformation"]["maxLsaThreshold"]
-                num_lsa = get_value(instance_data, "lsaInformation.numLsa")
-                if num_lsa is None:
-                    self.result.is_failure(f"Instance: {instance} - Current number of LSAs not found")
-                    continue
-                if num_lsa > (max_lsa_threshold := round(max_lsa * (max_lsa_threshold / 100))):
-                    self.result.is_failure(f"Instance: {instance} - Crossed the maximum LSA threshold - Expected: < {max_lsa_threshold} Actual: {num_lsa}")
-
-
-class VerifyOSPFSpecificNeighbors(AntaTest):
-    """Verifies OSPF specific neighbors.
-
-    Expected Results
-    ----------------
-    * Success: The test will pass if all specified OSPF neighbors meet expected state and area.
-    * Failure: The test will fail if OSPF is not configured, or any specified neighbor is not found or has incorrect state/area.
-
-    Examples
-    --------
-    ```yaml
-    anta.tests.routing:
-      ospf:
-        - VerifyOSPFSpecificNeighbors:
-            neighbors:
-              - instance: 100
-                vrf: default
-                ip_address: 10.1.255.46
-                local_interface: Ethernet2
-                area_id: 0  # Support for decimal format
-                state: full
-              - instance: 200
-                vrf: DEV
-                ip_address: 10.9.1.1
-                local_interface: Vlan911
-                area_id: 0.0.0.1  # Support for IP address format
-                state: 2Ways
-    ```
-    """
-
-    categories: ClassVar[list[str]] = ["ospf"]
-    commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaCommand(command="show ip ospf neighbor", revision=1)]
-
-    class Input(AntaTest.Input):
-        """Input model for the VerifyOSPFSpecificNeighbors test."""
-
-        neighbors: list[OSPFNeighbor]
-        """List of OSPF neighbors to verify."""
-
-    @AntaTest.anta_test
-    def test(self) -> None:
-        """Main test function for VerifyOSPFSpecificNeighbors."""
-        self.result.is_success()
-
-        # If OSPF is not configured on the device, test fails
-        if not (vrf_data := get_value(self.instance_commands[0].json_output, "vrfs")):
-            self.result.is_failure("OSPF not configured")
-            return
-
-        for neighbor in self.inputs.neighbors:
-            # Try to get the neighbor data from the ospfNeighborEntries output list
-            neighbor_data = {}
-            for entry in get_value(vrf_data, f"{neighbor.vrf}..instList..{neighbor.instance}..ospfNeighborEntries", default=[], separator=".."):
-                if str(neighbor.ip_address) == entry["interfaceAddress"] and neighbor.local_interface == entry["interfaceName"]:
-                    # Neighbor found
-                    neighbor_data = entry
-                    break
-
-            if not neighbor_data:
-                self.result.is_failure(f"{neighbor} - Neighbor not found")
-                continue
-
-            # Check the area_id
-            if (exp_area_id := str(neighbor.area_id)) != (act_area_id := neighbor_data["details"]["areaId"]):
-                self.result.is_failure(f"{neighbor} - Area-ID mismatch - Expected: {exp_area_id} Actual: {act_area_id}")
-                continue
-
-            # Check the adjacency state
-            if (exp_adj_state := neighbor.state) != (act_adj_state := neighbor_data["adjacencyState"]):
-                self.result.is_failure(f"{neighbor} - Adjacency state mismatch - Expected: {exp_adj_state} Actual: {act_adj_state}")
+        all_instances_within_threshold = all(instance["numLsa"] <= instance["maxLsa"] * (instance["maxLsaThreshold"] / 100) for instance in ospf_instance_info)
+        if all_instances_within_threshold:
+            self.result.is_success()
+        else:
+            exceeded_instances = [
+                instance["instance"] for instance in ospf_instance_info if instance["numLsa"] > instance["maxLsa"] * (instance["maxLsaThreshold"] / 100)
+            ]
+            self.result.is_failure(f"OSPF Instances {exceeded_instances} crossed the maximum LSA threshold.")

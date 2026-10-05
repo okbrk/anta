@@ -1,11 +1,9 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Fixtures for benchmarking ANTA."""
 
-import copy
 import logging
-import os
 from collections import defaultdict
 
 import pytest
@@ -27,10 +25,6 @@ BENCHMARK_PARAMETERS = [
     pytest.param({"count": 2, "disable_cache": True, "reachable": True}, id="2-devices"),
 ]
 
-# Keep the expensive 5-device benchmarks out of CodSpeed's simulation pass.
-if os.environ.get("CODSPEED_RUNNER_MODE") == "memory":
-    BENCHMARK_PARAMETERS.append(pytest.param({"count": 5, "disable_cache": True, "reachable": True}, id="5-devices"))
-
 
 @pytest.fixture(name="anta_mock_env", scope="session")  # We want this fixture to have a scope set to session to avoid reparsing all the unit tests data.
 def anta_mock_env_fixture() -> AntaMockEnvironment:
@@ -51,18 +45,18 @@ def catalog(anta_mock_env: AntaMockEnvironment) -> AntaCatalog:
 
 @pytest.fixture(name="session_results", scope="session")  # We want this fixture to be reused across test modules within tests/benchmark
 def session_results_fixture() -> defaultdict[str, ResultManager]:
-    """Return a dictionary of ResultManager objects for the benchmarks.
+    """Return a dictionary of ResultManger objects for the benchmarks.
 
     The key is the test id as defined in the pytest_generate_tests in this module.
     Used to pass a populated ResultManager from one benchmark to another.
     """
-    return defaultdict(ResultManager)
+    return defaultdict(lambda: ResultManager())
 
 
 @pytest.fixture
 def results(request: pytest.FixtureRequest, session_results: defaultdict[str, ResultManager]) -> ResultManager:
-    """Return an independent ResultManager for the current benchmark parameter."""
-    return copy.deepcopy(session_results[request.node.callspec.id])
+    """Return the unique ResultManger object for the current benchmark parameter."""
+    return session_results[request.node.callspec.id]
 
 
 def pytest_terminal_summary(terminalreporter: TerminalReporter) -> None:

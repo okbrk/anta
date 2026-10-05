@@ -1,13 +1,8 @@
 ---
-title: Overview of ANTA's Command-Line Interface (CLI)
-hide:
-  - tags
-tags:
-  - CLI
+anta_title: Overview of ANTA's Command-Line Interface (CLI)
 ---
-
 <!--
-  ~ Copyright (c) 2023-2026 Arista Networks, Inc.
+  ~ Copyright (c) 2023-2025 Arista Networks, Inc.
   ~ Use of this source code is governed by the Apache License 2.0
   ~ that can be found in the LICENSE file.
   -->
@@ -16,14 +11,12 @@ ANTA provides a powerful Command-Line Interface (CLI) to perform a wide range of
 
 ANTA can also be used as a Python library, allowing you to build your own tools based on it. Visit this [page](../advanced_usages/as-python-lib.md) for more details.
 
-!!! note "Security advisory workflows"
-    For ANTA PSIRT usage, see the [ANTA PSIRT CLI](../security-advisory/usage.md) documentation.
-
 To start using the ANTA CLI, open your terminal and type `anta`.
 
 ## Invoking ANTA CLI
 
 ```bash
+$ anta --help
 --8<-- "anta_help.txt"
 ```
 
@@ -52,36 +45,27 @@ Then, run the CLI without options:
 anta nrfu
 ```
 
-!!! note
-    All environment variables may not be needed for every command.
-
-    Refer to `<command> --help` for a comprehensive list of environment variables.
+> [!NOTE]
+> All environment variables may not be needed for every commands.
+>
+> Refer to `<command> --help` for the comprehensive environment variables names.
 
 Below are the environment variables usable with the `anta nrfu` command:
 
-| Variable Name | Purpose | Required | Default |
-| ------------- | ------- | -------- | ------- |
-| ANTA_USERNAME | The username to use in the inventory to connect to devices. | Yes | - |
-| ANTA_PASSWORD | The password to use in the inventory to connect to devices. | Yes | - |
-| ANTA_INVENTORY | The path to the inventory file. | Yes | - |
-| ANTA_CATALOG | The path to the catalog file. | Yes | - |
-| ANTA_ENABLE_PASSWORD | The optional enable password, when this variable is set, ANTA_ENABLE or `--enable` is required. | No | - |
-| ANTA_ENABLE | Whether it is necessary to go to enable mode on devices. | No | False |
-| ANTA_PROMPT | Prompt for passwords if they are not provided. | No | False |
-| ANTA_TIMEOUT | The global timeout value for eAPI command requests. See [Device Connection and Refresh](../usage-inventory-catalog.md#device-connection-and-refresh) for the timeout stages during inventory refresh. | No | 30.0 |
-| ANTA_INSECURE | Whether or not to use insecure mode when connecting to the EOS devices HTTP API. | No | False |
-| ANTA_DISABLE_CACHE | A variable to disable caching for all ANTA tests (enabled by default). | No | False |
-| ANTA_USE_SESSION_AUTH | Enable or disable session-based authentication globally. When set to `true`, forces session auth on for all capable devices. When set to `false`, forces it off. When unset, defers to the per-device inventory value. | No | - |
-| ANTA_INVENTORY_FORMAT | Format of the inventory file. `json` or `yaml`. | No | `yaml` |
-| ANTA_CATALOG_FORMAT | Format of the catalog file. `json` or `yaml`. | No | `yaml` |
-| ANTA_TAGS | A list of tags to filter which tests to run on which devices. | No | - |
-| ANTA_NRFU_IGNORE_STATUS | Exit code will always be 0. | No | False |
-| ANTA_NRFU_IGNORE_ERROR | Exit code will be 0 if no test failed or 4 if any test failed. | No | False |
-| ANTA_NRFU_DRY_RUN | Run `anta nrfu` command but stop before running the tests. | No | False |
-| ANTA_DISCONNECT_INVENTORY | Disconnect inventory devices once the test run is complete. | No | True |
+| Variable Name | Purpose | Required |
+| ------------- | ------- |----------|
+| ANTA_USERNAME | The username to use in the inventory to connect to devices. |  Yes  |
+| ANTA_PASSWORD | The password to use in the inventory to connect to devices. |  Yes  |
+| ANTA_INVENTORY | The path to the inventory file. |  Yes  |
+| ANTA_CATALOG | The path to the catalog file. |  Yes  |
+| ANTA_PROMPT | The value to pass to the prompt for password is password is not provided |  No  |
+| ANTA_INSECURE | Whether or not using insecure mode when connecting to the EOS devices HTTP API. |  No  |
+| ANTA_DISABLE_CACHE | A variable to disable caching for all ANTA tests (enabled by default). |  No  |
+| ANTA_ENABLE | Whether it is necessary to go to enable mode on devices. |  No  |
+| ANTA_ENABLE_PASSWORD | The optional enable password, when this variable is set, ANTA_ENABLE or `--enable` is required. |  No  |
 
-!!! note
-    Caching can be disabled with the global parameter `--disable-cache`. For more details about how caching is implemented in ANTA, please refer to [Caching in ANTA](../advanced_usages/caching.md).
+> [!NOTE]
+> Caching can be disabled with the global parameter `--disable-cache`. For more details about how caching is implemented in ANTA, please refer to [Caching in ANTA](../advanced_usages/caching.md).
 
 ## ANTA Exit Codes
 
@@ -95,7 +79,7 @@ ANTA CLI utilizes the following exit codes:
 
 To ignore the test status, use `anta nrfu --ignore-status`, and the exit code will always be 0.
 
-To ignore errors, use `anta nrfu --ignore-error`, and the exit code will be 0 if no test failed or 4 if any test failed.
+To ignore errors, use `anta nrfu --ignore-error`, and the exit code will be 0 if all tests succeeded or 1 if any test failed.
 
 ## Shell Completion
 

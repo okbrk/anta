@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Tests for anta.cli.nrfu."""
@@ -7,15 +7,12 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
-
-import pytest
 
 from anta.cli import anta
 from anta.cli.utils import ExitCode
-from anta.inventory import AntaInventory
 
 if TYPE_CHECKING:
+    import pytest
     from click.testing import CliRunner
 
 DATA_DIR: Path = Path(__file__).parents[3].resolve() / "data"
@@ -55,32 +52,11 @@ def test_anta_nrfu_dry_run(click_runner: CliRunner) -> None:
     assert "Dry-run" in result.output
 
 
-@pytest.mark.parametrize(
-    ("args", "env", "expected"),
-    [
-        pytest.param(["nrfu"], {}, True, id="default"),
-        pytest.param(["nrfu", "--disconnect"], {}, True, id="option-enable"),
-        pytest.param(["nrfu", "--no-disconnect"], {}, False, id="option-disable"),
-        pytest.param(["nrfu"], {"ANTA_DISCONNECT_INVENTORY": "true"}, True, id="env-var-enable"),
-        pytest.param(["nrfu"], {"ANTA_DISCONNECT_INVENTORY": "false"}, False, id="env-var-disable"),
-    ],
-)
-def test_anta_nrfu_disconnect(click_runner: CliRunner, args: list[str], env: dict[str, str], expected: bool) -> None:
-    """Test anta nrfu disconnect inputs are passed to the runner."""
-    with patch("anta.cli.nrfu.utils.AntaRunner.run", new=AsyncMock()) as run_mock:
-        result = click_runner.invoke(anta, args, env=env)
-
-    assert result.exit_code == ExitCode.OK
-    run_mock.assert_awaited_once()
-    assert run_mock.await_args is not None
-    assert run_mock.await_args.kwargs["disconnect"] is expected
-
-
 def test_anta_nrfu_wrong_catalog_format(click_runner: CliRunner) -> None:
     """Test anta nrfu --dry-run, catalog is given via env."""
     result = click_runner.invoke(anta, ["nrfu", "--dry-run", "--catalog-format", "toto"])
     assert result.exit_code == ExitCode.USAGE_ERROR
-    assert "Invalid value for '--catalog-format' (env var: 'ANTA_CATALOG_FORMAT'): 'toto' is not one of 'yaml', 'json'." in result.output
+    assert "Invalid value for '--catalog-format': 'toto' is not one of 'yaml', 'json'." in result.output
 
 
 def test_anta_password_required(click_runner: CliRunner) -> None:
@@ -97,7 +73,7 @@ def test_anta_password(click_runner: CliRunner) -> None:
     env = {"ANTA_PASSWORD": None}
     result = click_runner.invoke(anta, ["nrfu", "--password", "secret"], env=env)
     assert result.exit_code == ExitCode.OK
-    result = click_runner.invoke(anta, ["nrfu", "--prompt"], input="password\n", env=env)
+    result = click_runner.invoke(anta, ["nrfu", "--prompt"], input="password\npassword\n", env=env)
     assert result.exit_code == ExitCode.OK
 
 
@@ -108,7 +84,7 @@ def test_anta_enable_password(click_runner: CliRunner) -> None:
     assert result.exit_code == ExitCode.OK
 
     # enable and prompt y
-    result = click_runner.invoke(anta, ["nrfu", "--enable", "--prompt"], input="y\npassword\n")
+    result = click_runner.invoke(anta, ["nrfu", "--enable", "--prompt"], input="y\npassword\npassword\n")
     assert "Is a password required to enter EOS privileged EXEC mode? [y/N]:" in result.output
     assert "Please enter a password to enter EOS privileged EXEC mode" in result.output
     assert result.exit_code == ExitCode.OK
@@ -119,7 +95,7 @@ def test_anta_enable_password(click_runner: CliRunner) -> None:
     assert "Please enter a password to enter EOS privileged EXEC mode" not in result.output
     assert result.exit_code == ExitCode.OK
 
-    result = click_runner.invoke(anta, ["nrfu", "--enable", "--enable-password", "blah", "--prompt"], input="y\npassword\n")
+    result = click_runner.invoke(anta, ["nrfu", "--enable", "--enable-password", "blah", "--prompt"], input="y\npassword\npassword\n")
     assert "Is a password required to enter EOS privileged EXEC mode? [y/N]:" not in result.output
     assert "Please enter a password to enter EOS privileged EXEC mode" not in result.output
     assert result.exit_code == ExitCode.OK
@@ -145,25 +121,6 @@ def test_disable_cache(click_runner: CliRunner) -> None:
         if "disable_cache" in line:
             assert "True" in line
     assert result.exit_code == ExitCode.OK
-
-
-@pytest.mark.parametrize(
-    ("args", "env", "expected"),
-    [
-        pytest.param(["nrfu"], {}, None, id="default"),
-        pytest.param(["nrfu", "--use-session-auth"], {}, True, id="option-enable"),
-        pytest.param(["nrfu", "--no-session-auth"], {}, False, id="option-disable"),
-        pytest.param(["nrfu"], {"ANTA_USE_SESSION_AUTH": "true"}, True, id="env-var-enable"),
-        pytest.param(["nrfu"], {"ANTA_USE_SESSION_AUTH": "false"}, False, id="env-var-disable"),
-    ],
-)
-def test_anta_nrfu_use_session(click_runner: CliRunner, args: list[str], env: dict[str, str], expected: bool | None) -> None:
-    """Test anta nrfu use_session_auth inputs are forwarded to AntaInventory.parse."""
-    with patch("anta.cli.utils.AntaInventory.parse", wraps=AntaInventory.parse) as parse_mock:
-        result = click_runner.invoke(anta, args, env=env)
-    assert result.exit_code == ExitCode.OK
-    parse_mock.assert_called_once()
-    assert parse_mock.call_args.kwargs["use_session_auth"] is expected
 
 
 def test_hide(click_runner: CliRunner) -> None:

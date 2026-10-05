@@ -1,107 +1,187 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Tests for anta.tests.mlag.py."""
 
 from __future__ import annotations
 
-import sys
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from anta.models import AntaTest
-from anta.result_manager.models import AntaTestStatus
 from anta.tests.mlag import VerifyMlagConfigSanity, VerifyMlagDualPrimary, VerifyMlagInterfaces, VerifyMlagPrimaryPriority, VerifyMlagReloadDelay, VerifyMlagStatus
 from tests.units.anta_tests import test
 
-if TYPE_CHECKING:
-    from tests.units.anta_tests import AntaUnitTestData
-
-DATA: AntaUnitTestData = {
-    (VerifyMlagStatus, "success"): {
+DATA: list[dict[str, Any]] = [
+    {
+        "name": "success",
+        "test": VerifyMlagStatus,
         "eos_data": [{"state": "active", "negStatus": "connected", "peerLinkStatus": "up", "localIntfStatus": "up"}],
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyMlagStatus, "skipped"): {
-        "eos_data": [{"state": "disabled"}],
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["MLAG is disabled"]},
+    {
+        "name": "skipped",
+        "test": VerifyMlagStatus,
+        "eos_data": [
+            {
+                "state": "disabled",
+            },
+        ],
+        "inputs": None,
+        "expected": {"result": "skipped", "messages": ["MLAG is disabled"]},
     },
-    (VerifyMlagStatus, "failure-negotiation-status"): {
-        "eos_data": [{"state": "active", "negStatus": "connecting", "peerLinkStatus": "up", "localIntfStatus": "up"}],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["MLAG negotiation status mismatch - Expected: connected Actual: connecting"]},
-    },
-    (VerifyMlagStatus, "failure-local-interface"): {
-        "eos_data": [{"state": "active", "negStatus": "connected", "peerLinkStatus": "up", "localIntfStatus": "down"}],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Operational state of the MLAG local interface is not correct - Expected: up Actual: down"]},
-    },
-    (VerifyMlagStatus, "failure-peer-link"): {
+    {
+        "name": "failure",
+        "test": VerifyMlagStatus,
         "eos_data": [{"state": "active", "negStatus": "connected", "peerLinkStatus": "down", "localIntfStatus": "up"}],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Operational state of the MLAG peer link is not correct - Expected: up Actual: down"]},
+        "inputs": None,
+        "expected": {
+            "result": "failure",
+            "messages": ["MLAG status is not OK: {'state': 'active', 'negStatus': 'connected', 'localIntfStatus': 'up', 'peerLinkStatus': 'down'}"],
+        },
     },
-    (VerifyMlagInterfaces, "success"): {
-        "eos_data": [{"state": "active", "mlagPorts": {"Disabled": 0, "Configured": 0, "Inactive": 0, "Active-partial": 0, "Active-full": 1}}],
-        "expected": {"result": AntaTestStatus.SUCCESS},
+    {
+        "name": "success",
+        "test": VerifyMlagInterfaces,
+        "eos_data": [
+            {
+                "state": "active",
+                "mlagPorts": {"Disabled": 0, "Configured": 0, "Inactive": 0, "Active-partial": 0, "Active-full": 1},
+            },
+        ],
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyMlagInterfaces, "skipped"): {
-        "eos_data": [{"state": "disabled"}],
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["MLAG is disabled"]},
+    {
+        "name": "skipped",
+        "test": VerifyMlagInterfaces,
+        "eos_data": [
+            {
+                "state": "disabled",
+            },
+        ],
+        "inputs": None,
+        "expected": {"result": "skipped", "messages": ["MLAG is disabled"]},
     },
-    (VerifyMlagInterfaces, "failure-active-partial"): {
-        "eos_data": [{"state": "active", "mlagPorts": {"Disabled": 0, "Configured": 0, "Inactive": 0, "Active-partial": 1, "Active-full": 1}}],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["MLAG status is not ok - Inactive Ports: 0 Partial Active Ports: 1"]},
+    {
+        "name": "failure-active-partial",
+        "test": VerifyMlagInterfaces,
+        "eos_data": [
+            {
+                "state": "active",
+                "mlagPorts": {"Disabled": 0, "Configured": 0, "Inactive": 0, "Active-partial": 1, "Active-full": 1},
+            },
+        ],
+        "inputs": None,
+        "expected": {
+            "result": "failure",
+            "messages": ["MLAG status is not OK: {'Disabled': 0, 'Configured': 0, 'Inactive': 0, 'Active-partial': 1, 'Active-full': 1}"],
+        },
     },
-    (VerifyMlagInterfaces, "failure-inactive"): {
-        "eos_data": [{"state": "active", "mlagPorts": {"Disabled": 0, "Configured": 0, "Inactive": 1, "Active-partial": 1, "Active-full": 1}}],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["MLAG status is not ok - Inactive Ports: 1 Partial Active Ports: 1"]},
+    {
+        "name": "failure-inactive",
+        "test": VerifyMlagInterfaces,
+        "eos_data": [
+            {
+                "state": "active",
+                "mlagPorts": {"Disabled": 0, "Configured": 0, "Inactive": 1, "Active-partial": 1, "Active-full": 1},
+            },
+        ],
+        "inputs": None,
+        "expected": {
+            "result": "failure",
+            "messages": ["MLAG status is not OK: {'Disabled': 0, 'Configured': 0, 'Inactive': 1, 'Active-partial': 1, 'Active-full': 1}"],
+        },
     },
-    (VerifyMlagConfigSanity, "success"): {
+    {
+        "name": "success",
+        "test": VerifyMlagConfigSanity,
         "eos_data": [{"globalConfiguration": {}, "interfaceConfiguration": {}, "mlagActive": True, "mlagConnected": True}],
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyMlagConfigSanity, "skipped"): {
-        "eos_data": [{"mlagActive": False}],
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["MLAG is disabled"]},
+    {
+        "name": "skipped",
+        "test": VerifyMlagConfigSanity,
+        "eos_data": [
+            {
+                "mlagActive": False,
+            },
+        ],
+        "inputs": None,
+        "expected": {"result": "skipped", "messages": ["MLAG is disabled"]},
     },
-    (VerifyMlagConfigSanity, "failure-global"): {
+    {
+        "name": "failure-global",
+        "test": VerifyMlagConfigSanity,
         "eos_data": [
             {
                 "globalConfiguration": {"mlag": {"globalParameters": {"dual-primary-detection-delay": {"localValue": "0", "peerValue": "200"}}}},
                 "interfaceConfiguration": {},
                 "mlagActive": True,
                 "mlagConnected": True,
-            }
+            },
         ],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["MLAG config-sanity found in global configuration"]},
+        "inputs": None,
+        "expected": {
+            "result": "failure",
+            "messages": [
+                "MLAG config-sanity returned inconsistencies: "
+                "{'globalConfiguration': {'mlag': {'globalParameters': "
+                "{'dual-primary-detection-delay': {'localValue': '0', 'peerValue': '200'}}}}, "
+                "'interfaceConfiguration': {}}",
+            ],
+        },
     },
-    (VerifyMlagConfigSanity, "failure-interface"): {
+    {
+        "name": "failure-interface",
+        "test": VerifyMlagConfigSanity,
         "eos_data": [
             {
                 "globalConfiguration": {},
                 "interfaceConfiguration": {"trunk-native-vlan mlag30": {"interface": {"Port-Channel30": {"localValue": "123", "peerValue": "3700"}}}},
                 "mlagActive": True,
                 "mlagConnected": True,
-            }
+            },
         ],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["MLAG config-sanity found in interface configuration"]},
-    },
-    (VerifyMlagReloadDelay, "success"): {
-        "eos_data": [{"state": "active", "reloadDelay": 300, "reloadDelayNonMlag": 330}],
-        "inputs": {"reload_delay": 300, "reload_delay_non_mlag": 330},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyMlagReloadDelay, "skipped-disabled"): {
-        "eos_data": [{"state": "disabled"}],
-        "inputs": {"reload_delay": 300, "reload_delay_non_mlag": 330},
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["MLAG is disabled"]},
-    },
-    (VerifyMlagReloadDelay, "failure"): {
-        "eos_data": [{"state": "active", "reloadDelay": 400, "reloadDelayNonMlag": 430}],
-        "inputs": {"reload_delay": 300, "reload_delay_non_mlag": 330},
+        "inputs": None,
         "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["MLAG reload-delay mismatch - Expected: 300s Actual: 400s", "Delay for non-MLAG ports mismatch - Expected: 330s Actual: 430s"],
+            "result": "failure",
+            "messages": [
+                "MLAG config-sanity returned inconsistencies: "
+                "{'globalConfiguration': {}, "
+                "'interfaceConfiguration': {'trunk-native-vlan mlag30': "
+                "{'interface': {'Port-Channel30': {'localValue': '123', 'peerValue': '3700'}}}}}",
+            ],
         },
     },
-    (VerifyMlagDualPrimary, "success"): {
+    {
+        "name": "success",
+        "test": VerifyMlagReloadDelay,
+        "eos_data": [{"state": "active", "reloadDelay": 300, "reloadDelayNonMlag": 330}],
+        "inputs": {"reload_delay": 300, "reload_delay_non_mlag": 330},
+        "expected": {"result": "success"},
+    },
+    {
+        "name": "skipped-disabled",
+        "test": VerifyMlagReloadDelay,
+        "eos_data": [
+            {
+                "state": "disabled",
+            },
+        ],
+        "inputs": {"reload_delay": 300, "reload_delay_non_mlag": 330},
+        "expected": {"result": "skipped", "messages": ["MLAG is disabled"]},
+    },
+    {
+        "name": "failure",
+        "test": VerifyMlagReloadDelay,
+        "eos_data": [{"state": "active", "reloadDelay": 400, "reloadDelayNonMlag": 430}],
+        "inputs": {"reload_delay": 300, "reload_delay_non_mlag": 330},
+        "expected": {"result": "failure", "messages": ["The reload-delay parameters are not configured properly: {'reloadDelay': 400, 'reloadDelayNonMlag': 430}"]},
+    },
+    {
+        "name": "success",
+        "test": VerifyMlagDualPrimary,
         "eos_data": [
             {
                 "state": "active",
@@ -110,22 +190,38 @@ DATA: AntaUnitTestData = {
                 "dualPrimaryMlagRecoveryDelay": 60,
                 "dualPrimaryNonMlagRecoveryDelay": 0,
                 "detail": {"dualPrimaryDetectionDelay": 200, "dualPrimaryAction": "none"},
-            }
+            },
         ],
         "inputs": {"detection_delay": 200, "errdisabled": False, "recovery_delay": 60, "recovery_delay_non_mlag": 0},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyMlagDualPrimary, "skipped-disabled"): {
-        "eos_data": [{"state": "disabled"}],
+    {
+        "name": "skipped-disabled",
+        "test": VerifyMlagDualPrimary,
+        "eos_data": [
+            {
+                "state": "disabled",
+            },
+        ],
         "inputs": {"detection_delay": 200, "errdisabled": False, "recovery_delay": 60, "recovery_delay_non_mlag": 0},
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["MLAG is disabled"]},
+        "expected": {"result": "skipped", "messages": ["MLAG is disabled"]},
     },
-    (VerifyMlagDualPrimary, "failure-disabled"): {
-        "eos_data": [{"state": "active", "dualPrimaryDetectionState": "disabled", "dualPrimaryPortsErrdisabled": False}],
+    {
+        "name": "failure-disabled",
+        "test": VerifyMlagDualPrimary,
+        "eos_data": [
+            {
+                "state": "active",
+                "dualPrimaryDetectionState": "disabled",
+                "dualPrimaryPortsErrdisabled": False,
+            },
+        ],
         "inputs": {"detection_delay": 200, "errdisabled": False, "recovery_delay": 60, "recovery_delay_non_mlag": 0},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Dual-primary detection is disabled"]},
+        "expected": {"result": "failure", "messages": ["Dual-primary detection is disabled"]},
     },
-    (VerifyMlagDualPrimary, "failure-wrong-timers"): {
+    {
+        "name": "failure-wrong-timers",
+        "test": VerifyMlagDualPrimary,
         "eos_data": [
             {
                 "state": "active",
@@ -134,18 +230,25 @@ DATA: AntaUnitTestData = {
                 "dualPrimaryMlagRecoveryDelay": 160,
                 "dualPrimaryNonMlagRecoveryDelay": 0,
                 "detail": {"dualPrimaryDetectionDelay": 300, "dualPrimaryAction": "none"},
-            }
+            },
         ],
         "inputs": {"detection_delay": 200, "errdisabled": False, "recovery_delay": 60, "recovery_delay_non_mlag": 0},
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
-                "Dual-primary detection delay mismatch - Expected: 200 Actual: 300",
-                "Dual-primary MLAG recovery delay mismatch - Expected: 60 Actual: 160",
+                (
+                    "The dual-primary parameters are not configured properly: "
+                    "{'detail.dualPrimaryDetectionDelay': 300, "
+                    "'detail.dualPrimaryAction': 'none', "
+                    "'dualPrimaryMlagRecoveryDelay': 160, "
+                    "'dualPrimaryNonMlagRecoveryDelay': 0}"
+                ),
             ],
         },
     },
-    (VerifyMlagDualPrimary, "failure-wrong-action"): {
+    {
+        "name": "failure-wrong-action",
+        "test": VerifyMlagDualPrimary,
         "eos_data": [
             {
                 "state": "active",
@@ -154,46 +257,75 @@ DATA: AntaUnitTestData = {
                 "dualPrimaryMlagRecoveryDelay": 60,
                 "dualPrimaryNonMlagRecoveryDelay": 0,
                 "detail": {"dualPrimaryDetectionDelay": 200, "dualPrimaryAction": "none"},
-            }
+            },
         ],
         "inputs": {"detection_delay": 200, "errdisabled": True, "recovery_delay": 60, "recovery_delay_non_mlag": 0},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Dual-primary action mismatch - Expected: errdisableAllInterfaces Actual: none"]},
+        "expected": {
+            "result": "failure",
+            "messages": [
+                (
+                    "The dual-primary parameters are not configured properly: "
+                    "{'detail.dualPrimaryDetectionDelay': 200, "
+                    "'detail.dualPrimaryAction': 'none', "
+                    "'dualPrimaryMlagRecoveryDelay': 60, "
+                    "'dualPrimaryNonMlagRecoveryDelay': 0}"
+                ),
+            ],
+        },
     },
-    (VerifyMlagDualPrimary, "failure-wrong-non-mlag-delay"): {
+    {
+        "name": "success",
+        "test": VerifyMlagPrimaryPriority,
         "eos_data": [
             {
                 "state": "active",
-                "dualPrimaryDetectionState": "configured",
-                "dualPrimaryPortsErrdisabled": False,
-                "dualPrimaryMlagRecoveryDelay": 60,
-                "dualPrimaryNonMlagRecoveryDelay": 120,
-                "detail": {"dualPrimaryDetectionDelay": 200, "dualPrimaryAction": "errdisableAllInterfaces"},
+                "detail": {"mlagState": "primary", "primaryPriority": 32767},
             }
         ],
-        "inputs": {"detection_delay": 200, "errdisabled": True, "recovery_delay": 60, "recovery_delay_non_mlag": 60},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Dual-primary non MLAG recovery delay mismatch - Expected: 60 Actual: 120"]},
+        "inputs": {
+            "primary_priority": 32767,
+        },
+        "expected": {"result": "success"},
     },
-    (VerifyMlagPrimaryPriority, "success"): {
-        "eos_data": [{"state": "active", "detail": {"mlagState": "primary", "primaryPriority": 32767}}],
+    {
+        "name": "skipped-disabled",
+        "test": VerifyMlagPrimaryPriority,
+        "eos_data": [
+            {
+                "state": "disabled",
+            }
+        ],
         "inputs": {"primary_priority": 32767},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "skipped", "messages": ["MLAG is disabled"]},
     },
-    (VerifyMlagPrimaryPriority, "skipped-disabled"): {
-        "eos_data": [{"state": "disabled"}],
+    {
+        "name": "failure-not-primary",
+        "test": VerifyMlagPrimaryPriority,
+        "eos_data": [
+            {
+                "state": "active",
+                "detail": {"mlagState": "secondary", "primaryPriority": 32767},
+            }
+        ],
         "inputs": {"primary_priority": 32767},
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["MLAG is disabled"]},
-    },
-    (VerifyMlagPrimaryPriority, "failure-not-primary"): {
-        "eos_data": [{"state": "active", "detail": {"mlagState": "secondary", "primaryPriority": 32767}}],
-        "inputs": {"primary_priority": 32767},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["The device is not set as MLAG primary"]},
-    },
-    (VerifyMlagPrimaryPriority, "failure-incorrect-priority"): {
-        "eos_data": [{"state": "active", "detail": {"mlagState": "secondary", "primaryPriority": 32767}}],
-        "inputs": {"primary_priority": 1},
         "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["The device is not set as MLAG primary", "MLAG primary priority mismatch - Expected: 1 Actual: 32767"],
+            "result": "failure",
+            "messages": ["The device is not set as MLAG primary."],
         },
     },
-}
+    {
+        "name": "failure-incorrect-priority",
+        "test": VerifyMlagPrimaryPriority,
+        "eos_data": [
+            {
+                "state": "active",
+                "detail": {"mlagState": "secondary", "primaryPriority": 32767},
+            }
+        ],
+        "inputs": {"primary_priority": 1},
+        "expected": {
+            "result": "failure",
+            "messages": ["The device is not set as MLAG primary.", "The primary priority does not match expected. Expected `1`, but found `32767` instead."],
+        },
+    },
+]

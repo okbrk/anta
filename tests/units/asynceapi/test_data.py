@@ -1,12 +1,9 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Unit tests data for the asynceapi client package."""
 
-from asynceapi._constants import EapiCommandFormat
-from asynceapi._types import EapiJsonOutput, JsonRpc
-
-SUCCESS_EAPI_RESPONSE: EapiJsonOutput = {
+SUCCESS_EAPI_RESPONSE = {
     "jsonrpc": "2.0",
     "id": "EapiExplorer-1",
     "result": [
@@ -52,7 +49,7 @@ SUCCESS_EAPI_RESPONSE: EapiJsonOutput = {
 }
 """Successful eAPI JSON response."""
 
-ERROR_EAPI_RESPONSE: EapiJsonOutput = {
+ERROR_EAPI_RESPONSE = {
     "jsonrpc": "2.0",
     "id": "EapiExplorer-1",
     "error": {
@@ -87,10 +84,5 @@ ERROR_EAPI_RESPONSE: EapiJsonOutput = {
 }
 """Error eAPI JSON response."""
 
-JSONRPC_REQUEST_TEMPLATE: JsonRpc = {
-    "jsonrpc": "2.0",
-    "method": "runCmds",
-    "params": {"version": 1, "cmds": [], "format": EapiCommandFormat.JSON},
-    "id": "EapiExplorer-1",
-}
+JSONRPC_REQUEST_TEMPLATE = {"jsonrpc": "2.0", "method": "runCmds", "params": {"version": 1, "cmds": [], "format": "json"}, "id": "EapiExplorer-1"}
 """Template for JSON-RPC eAPI request. `cmds` must be filled by the parametrize decorator."""

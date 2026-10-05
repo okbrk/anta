@@ -1,23 +1,19 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Test inputs for anta.tests.flow_tracking."""
 
 from __future__ import annotations
 
-import sys
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from anta.models import AntaTest
-from anta.result_manager.models import AntaTestStatus
 from anta.tests.flow_tracking import VerifyHardwareFlowTrackerStatus
 from tests.units.anta_tests import test
 
-if TYPE_CHECKING:
-    from tests.units.anta_tests import AntaUnitTestData
-
-DATA: AntaUnitTestData = {
-    (VerifyHardwareFlowTrackerStatus, "success"): {
+DATA: list[dict[str, Any]] = [
+    {
+        "name": "success",
+        "test": VerifyHardwareFlowTrackerStatus,
         "eos_data": [
             {
                 "trackers": {
@@ -26,21 +22,28 @@ DATA: AntaUnitTestData = {
                         "inactiveTimeout": 60000,
                         "activeInterval": 300000,
                         "exporters": {"CV-TELEMETRY": {"localIntf": "Loopback0", "templateInterval": 3600000}},
-                    },
+                    }
+                },
+                "running": True,
+            },
+            {
+                "trackers": {
                     "HARDWARE-TRACKER": {
                         "active": True,
                         "inactiveTimeout": 60000,
                         "activeInterval": 300000,
                         "exporters": {"CV-TELEMETRY": {"localIntf": "Loopback0", "templateInterval": 3600000}},
-                    },
+                    }
                 },
                 "running": True,
-            }
+            },
         ],
         "inputs": {"trackers": [{"name": "FLOW-TRACKER"}, {"name": "HARDWARE-TRACKER"}]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyHardwareFlowTrackerStatus, "success-with-optional-field"): {
+    {
+        "name": "success-with-optional-field",
+        "test": VerifyHardwareFlowTrackerStatus,
         "eos_data": [
             {
                 "trackers": {
@@ -49,16 +52,21 @@ DATA: AntaUnitTestData = {
                         "inactiveTimeout": 60000,
                         "activeInterval": 300000,
                         "exporters": {"CV-TELEMETRY": {"localIntf": "Loopback0", "templateInterval": 3600000}},
-                    },
+                    }
+                },
+                "running": True,
+            },
+            {
+                "trackers": {
                     "HARDWARE-TRACKER": {
                         "active": True,
                         "inactiveTimeout": 60000,
                         "activeInterval": 300000,
                         "exporters": {"CVP-TELEMETRY": {"localIntf": "Loopback10", "templateInterval": 3600000}},
-                    },
+                    }
                 },
                 "running": True,
-            }
+            },
         ],
         "inputs": {
             "trackers": [
@@ -74,14 +82,21 @@ DATA: AntaUnitTestData = {
                 },
             ]
         },
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyHardwareFlowTrackerStatus, "failure-flow-tracking-not-running"): {
+    {
+        "name": "failure-flow-tracking-not-running",
+        "test": VerifyHardwareFlowTrackerStatus,
         "eos_data": [{"trackers": {}, "running": False}],
         "inputs": {"trackers": [{"name": "FLOW-TRACKER"}]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Hardware flow tracking is not running"]},
+        "expected": {
+            "result": "failure",
+            "messages": ["Hardware flow tracking is not running."],
+        },
     },
-    (VerifyHardwareFlowTrackerStatus, "failure-tracker-not-configured"): {
+    {
+        "name": "failure-tracker-not-configured",
+        "test": VerifyHardwareFlowTrackerStatus,
         "eos_data": [
             {
                 "trackers": {
@@ -96,9 +111,14 @@ DATA: AntaUnitTestData = {
             }
         ],
         "inputs": {"trackers": [{"name": "FLOW-Sample"}]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Flow Tracker: FLOW-Sample - Not found"]},
+        "expected": {
+            "result": "failure",
+            "messages": ["Hardware flow tracker `FLOW-Sample` is not configured."],
+        },
     },
-    (VerifyHardwareFlowTrackerStatus, "failure-tracker-not-active"): {
+    {
+        "name": "failure-tracker-not-active",
+        "test": VerifyHardwareFlowTrackerStatus,
         "eos_data": [
             {
                 "trackers": {
@@ -107,16 +127,21 @@ DATA: AntaUnitTestData = {
                         "inactiveTimeout": 60000,
                         "activeInterval": 300000,
                         "exporters": {"CV-TELEMETRY": {"localIntf": "Loopback0", "templateInterval": 3600000}},
-                    },
+                    }
+                },
+                "running": True,
+            },
+            {
+                "trackers": {
                     "HARDWARE-TRACKER": {
                         "active": False,
                         "inactiveTimeout": 60000,
                         "activeInterval": 300000,
                         "exporters": {"CVP-TELEMETRY": {"localIntf": "Loopback10", "templateInterval": 3600000}},
-                    },
+                    }
                 },
                 "running": True,
-            }
+            },
         ],
         "inputs": {
             "trackers": [
@@ -132,9 +157,14 @@ DATA: AntaUnitTestData = {
                 },
             ]
         },
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Flow Tracker: FLOW-TRACKER - Disabled", "Flow Tracker: HARDWARE-TRACKER - Disabled"]},
+        "expected": {
+            "result": "failure",
+            "messages": ["Hardware flow tracker `FLOW-TRACKER` is not active.", "Hardware flow tracker `HARDWARE-TRACKER` is not active."],
+        },
     },
-    (VerifyHardwareFlowTrackerStatus, "failure-incorrect-record-export"): {
+    {
+        "name": "failure-incorrect-record-export",
+        "test": VerifyHardwareFlowTrackerStatus,
         "eos_data": [
             {
                 "trackers": {
@@ -143,35 +173,47 @@ DATA: AntaUnitTestData = {
                         "inactiveTimeout": 60000,
                         "activeInterval": 300000,
                         "exporters": {"CV-TELEMETRY": {"localIntf": "Loopback0", "templateInterval": 3600000}},
-                    },
+                    }
+                },
+                "running": True,
+            },
+            {
+                "trackers": {
                     "HARDWARE-TRACKER": {
                         "active": True,
                         "inactiveTimeout": 6000,
                         "activeInterval": 30000,
                         "exporters": {"CVP-TELEMETRY": {"localIntf": "Loopback10", "templateInterval": 3600000}},
-                    },
+                    }
                 },
                 "running": True,
-            }
+            },
         ],
         "inputs": {
             "trackers": [
-                {"name": "FLOW-TRACKER", "record_export": {"on_inactive_timeout": 6000, "on_interval": 30000}},
-                {"name": "HARDWARE-TRACKER", "record_export": {"on_inactive_timeout": 60000, "on_interval": 300000}},
+                {
+                    "name": "FLOW-TRACKER",
+                    "record_export": {"on_inactive_timeout": 6000, "on_interval": 30000},
+                },
+                {
+                    "name": "HARDWARE-TRACKER",
+                    "record_export": {"on_inactive_timeout": 60000, "on_interval": 300000},
+                },
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
-                "Flow Tracker: FLOW-TRACKER Inactive Timeout: 6000 Active Interval: 30000 - Incorrect timers - Inactive Timeout: 60000 OnActive Interval: 300000",
-                (
-                    "Flow Tracker: HARDWARE-TRACKER Inactive Timeout: 60000 Active Interval: 300000 - Incorrect timers - "
-                    "Inactive Timeout: 6000 OnActive Interval: 30000"
-                ),
+                "FLOW-TRACKER: \n"
+                "Expected `6000` as the inactive timeout, but found `60000` instead.\nExpected `30000` as the interval, but found `300000` instead.\n",
+                "HARDWARE-TRACKER: \n"
+                "Expected `60000` as the inactive timeout, but found `6000` instead.\nExpected `300000` as the interval, but found `30000` instead.\n",
             ],
         },
     },
-    (VerifyHardwareFlowTrackerStatus, "failure-incorrect-exporters"): {
+    {
+        "name": "failure-incorrect-exporters",
+        "test": VerifyHardwareFlowTrackerStatus,
         "eos_data": [
             {
                 "trackers": {
@@ -183,7 +225,12 @@ DATA: AntaUnitTestData = {
                             "CV-TELEMETRY": {"localIntf": "Loopback0", "templateInterval": 3600000},
                             "CVP-FLOW": {"localIntf": "Loopback0", "templateInterval": 3600000},
                         },
-                    },
+                    }
+                },
+                "running": True,
+            },
+            {
+                "trackers": {
                     "HARDWARE-TRACKER": {
                         "active": True,
                         "inactiveTimeout": 6000,
@@ -192,10 +239,10 @@ DATA: AntaUnitTestData = {
                             "CVP-TELEMETRY": {"localIntf": "Loopback10", "templateInterval": 3600000},
                             "Hardware-flow": {"localIntf": "Loopback10", "templateInterval": 3600000},
                         },
-                    },
+                    }
                 },
                 "running": True,
-            }
+            },
         ],
         "inputs": {
             "trackers": [
@@ -216,17 +263,23 @@ DATA: AntaUnitTestData = {
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
-                "Flow Tracker: FLOW-TRACKER Exporter: CVP-FLOW - Incorrect local interface - Expected: Loopback10 Actual: Loopback0",
-                "Flow Tracker: FLOW-TRACKER Exporter: CVP-FLOW - Incorrect template interval - Expected: 3500000 Actual: 3600000",
-                "Flow Tracker: HARDWARE-TRACKER Exporter: Hardware-flow - Incorrect local interface - Expected: Loopback99 Actual: Loopback10",
-                "Flow Tracker: HARDWARE-TRACKER Exporter: Hardware-flow - Incorrect template interval - Expected: 3000000 Actual: 3600000",
-                "Flow Tracker: HARDWARE-TRACKER Exporter: Reverse-flow - Not configured",
+                "FLOW-TRACKER: \n"
+                "Exporter `CVP-FLOW`: \n"
+                "Expected `Loopback10` as the local interface, but found `Loopback0` instead.\n"
+                "Expected `3500000` as the template interval, but found `3600000` instead.\n",
+                "HARDWARE-TRACKER: \n"
+                "Exporter `Hardware-flow`: \n"
+                "Expected `Loopback99` as the local interface, but found `Loopback10` instead.\n"
+                "Expected `3000000` as the template interval, but found `3600000` instead.\n"
+                "Exporter `Reverse-flow` is not configured.\n",
             ],
         },
     },
-    (VerifyHardwareFlowTrackerStatus, "failure-all-type"): {
+    {
+        "name": "failure-all-type",
+        "test": VerifyHardwareFlowTrackerStatus,
         "eos_data": [
             {
                 "trackers": {
@@ -235,19 +288,34 @@ DATA: AntaUnitTestData = {
                         "inactiveTimeout": 60000,
                         "activeInterval": 300000,
                         "exporters": {"CVP-TELEMETRY": {"localIntf": "Loopback10", "templateInterval": 3600000}},
-                    },
+                    }
+                },
+                "running": True,
+            },
+            {
+                "trackers": {
                     "FLOW-TRIGGER": {
                         "active": False,
                         "inactiveTimeout": 60000,
                         "activeInterval": 300000,
                         "exporters": {"CV-TELEMETRY": {"localIntf": "Loopback0", "templateInterval": 3600000}},
-                    },
+                    }
+                },
+                "running": True,
+            },
+            {
+                "trackers": {
                     "HARDWARE-FLOW": {
                         "active": True,
                         "inactiveTimeout": 6000,
                         "activeInterval": 30000,
                         "exporters": {"CVP-TELEMETRY": {"localIntf": "Loopback10", "templateInterval": 3600000}},
-                    },
+                    }
+                },
+                "running": True,
+            },
+            {
+                "trackers": {
                     "FLOW-TRACKER2": {
                         "active": True,
                         "inactiveTimeout": 60000,
@@ -256,7 +324,12 @@ DATA: AntaUnitTestData = {
                             "CV-TELEMETRY": {"localIntf": "Loopback0", "templateInterval": 3600000},
                             "CVP-FLOW": {"localIntf": "Loopback0", "templateInterval": 3600000},
                         },
-                    },
+                    }
+                },
+                "running": True,
+            },
+            {
+                "trackers": {
                     "HARDWARE-TRACKER2": {
                         "active": True,
                         "inactiveTimeout": 6000,
@@ -265,10 +338,10 @@ DATA: AntaUnitTestData = {
                             "CVP-TELEMETRY": {"localIntf": "Loopback10", "templateInterval": 3600000},
                             "Hardware-flow": {"localIntf": "Loopback10", "templateInterval": 3600000},
                         },
-                    },
+                    }
                 },
                 "running": True,
-            }
+            },
         ],
         "inputs": {
             "trackers": [
@@ -278,7 +351,10 @@ DATA: AntaUnitTestData = {
                     "record_export": {"on_inactive_timeout": 60000, "on_interval": 300000},
                     "exporters": [{"name": "CV-TELEMETRY", "local_interface": "Loopback0", "template_interval": 3600000}],
                 },
-                {"name": "HARDWARE-FLOW", "record_export": {"on_inactive_timeout": 60000, "on_interval": 300000}},
+                {
+                    "name": "HARDWARE-FLOW",
+                    "record_export": {"on_inactive_timeout": 60000, "on_interval": 300000},
+                },
                 {
                     "name": "FLOW-TRACKER2",
                     "exporters": [
@@ -296,17 +372,20 @@ DATA: AntaUnitTestData = {
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
-                "Flow Tracker: FLOW-Sample - Not found",
-                "Flow Tracker: FLOW-TRIGGER - Disabled",
-                "Flow Tracker: HARDWARE-FLOW Inactive Timeout: 60000 Active Interval: 300000 - Incorrect timers - Inactive Timeout: 6000 OnActive Interval: 30000",
-                "Flow Tracker: FLOW-TRACKER2 Exporter: CVP-FLOW - Incorrect local interface - Expected: Loopback10 Actual: Loopback0",
-                "Flow Tracker: FLOW-TRACKER2 Exporter: CVP-FLOW - Incorrect template interval - Expected: 3500000 Actual: 3600000",
-                "Flow Tracker: HARDWARE-TRACKER2 Exporter: Hardware-flow - Incorrect local interface - Expected: Loopback99 Actual: Loopback10",
-                "Flow Tracker: HARDWARE-TRACKER2 Exporter: Hardware-flow - Incorrect template interval - Expected: 3000000 Actual: 3600000",
-                "Flow Tracker: HARDWARE-TRACKER2 Exporter: Reverse-flow - Not configured",
+                "Hardware flow tracker `FLOW-Sample` is not configured.",
+                "Hardware flow tracker `FLOW-TRIGGER` is not active.",
+                "HARDWARE-FLOW: \n"
+                "Expected `60000` as the inactive timeout, but found `6000` instead.\nExpected `300000` as the interval, but found `30000` instead.\n",
+                "FLOW-TRACKER2: \nExporter `CVP-FLOW`: \n"
+                "Expected `Loopback10` as the local interface, but found `Loopback0` instead.\n"
+                "Expected `3500000` as the template interval, but found `3600000` instead.\n",
+                "HARDWARE-TRACKER2: \nExporter `Hardware-flow`: \n"
+                "Expected `Loopback99` as the local interface, but found `Loopback10` instead.\n"
+                "Expected `3000000` as the template interval, but found `3600000` instead.\n"
+                "Exporter `Reverse-flow` is not configured.\n",
             ],
         },
     },
-}
+]

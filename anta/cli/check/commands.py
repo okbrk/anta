@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 # pylint: disable = redefined-outer-name
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 @click.command
-@catalog_options()
+@catalog_options
 def catalog(catalog: AntaCatalog) -> None:
     """Check that the catalog is valid."""
     console.print(f"[bold][green]Catalog is valid: {catalog.filename}")

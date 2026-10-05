@@ -1,17 +1,17 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Benchmark tests for anta.reporter."""
 
+import json
 import logging
 from pathlib import Path
 
 import pytest
 
+from anta.reporter import ReportJinja, ReportTable
 from anta.reporter.csv_reporter import ReportCsv
-from anta.reporter.jinja_reporter import ReportJinja
 from anta.reporter.md_reporter import MDReportGenerator
-from anta.reporter.table_reporter import ReportTable
 from anta.result_manager import ResultManager
 
 logger = logging.getLogger(__name__)
@@ -22,33 +22,25 @@ DATA_DIR: Path = Path(__file__).parents[1].resolve() / "data"
 @pytest.mark.benchmark
 @pytest.mark.dependency(depends=["anta_benchmark"], scope="package")
 def test_table_all(results: ResultManager) -> None:
-    """Benchmark ReportTable.generate()."""
+    """Benchmark ReportTable.report_all()."""
     reporter = ReportTable()
-    _ = reporter.generate(results)
-
-
-@pytest.mark.benchmark
-@pytest.mark.dependency(depends=["anta_benchmark"], scope="package")
-def test_table_expanded(results: ResultManager) -> None:
-    """Benchmark ReportTable.generate_expanded()."""
-    reporter = ReportTable()
-    _ = reporter.generate_expanded(results)
+    reporter.report_all(results)
 
 
 @pytest.mark.benchmark
 @pytest.mark.dependency(depends=["anta_benchmark"], scope="package")
 def test_table_devices(results: ResultManager) -> None:
-    """Benchmark ReportTable.generate_summary_by_device()."""
+    """Benchmark ReportTable.report_summary_devices()."""
     reporter = ReportTable()
-    _ = reporter.generate_summary_by_device(results)
+    reporter.report_summary_devices(results)
 
 
 @pytest.mark.benchmark
 @pytest.mark.dependency(depends=["anta_benchmark"], scope="package")
 def test_table_tests(results: ResultManager) -> None:
-    """Benchmark ReportTable.generate_summary_by_test()."""
+    """Benchmark ReportTable.report_summary_tests()."""
     reporter = ReportTable()
-    _ = reporter.generate_summary_by_test(results)
+    reporter.report_summary_tests(results)
 
 
 @pytest.mark.benchmark
@@ -62,7 +54,7 @@ def test_json(results: ResultManager) -> None:
 @pytest.mark.dependency(depends=["anta_benchmark"], scope="package")
 def test_jinja(results: ResultManager) -> None:
     """Benchmark ReportJinja."""
-    assert isinstance(ReportJinja(template_path=DATA_DIR / "template.j2").render(results.dump), str)
+    assert isinstance(ReportJinja(template_path=DATA_DIR / "template.j2").render(json.loads(results.json)), str)
 
 
 @pytest.mark.benchmark
@@ -75,6 +67,5 @@ def test_csv(results: ResultManager, tmp_path: Path) -> None:
 @pytest.mark.benchmark
 @pytest.mark.dependency(depends=["anta_benchmark"], scope="package")
 def test_markdown(results: ResultManager, tmp_path: Path) -> None:
-    """Benchmark MDReportGenerator.generate_sections()."""
-    sections = [(section, results) for section in MDReportGenerator.DEFAULT_SECTIONS]
-    MDReportGenerator.generate_sections(sections=sections, md_filename=tmp_path / "report.md")
+    """Benchmark MDReportGenerator.generate()."""
+    MDReportGenerator.generate(results=results, md_filename=tmp_path / "report.md")

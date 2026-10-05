@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Catalog related functions."""
@@ -13,12 +13,12 @@ from inspect import isclass
 from itertools import chain
 from json import load as json_load
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Optional, Union
+from warnings import warn
 
 from pydantic import BaseModel, ConfigDict, RootModel, ValidationError, ValidationInfo, field_validator, model_serializer, model_validator
 from pydantic.types import ImportString
 from pydantic_core import PydanticCustomError
-from typing_extensions import deprecated
 from yaml import YAMLError, safe_dump, safe_load
 
 from anta.logger import anta_log_exception
@@ -36,10 +36,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # { <module_name> : [ { <test_class_name>: <input_as_dict_or_None> }, ... ] }
-RawCatalogInput = dict[str, list[dict[str, dict[str, Any] | None]]]
+RawCatalogInput = dict[str, list[dict[str, Optional[dict[str, Any]]]]]
 
 # [ ( <AntaTest class>, <input_as AntaTest.Input or dict or None > ), ... ]
-ListAntaTestTuples = list[tuple[type[AntaTest], AntaTest.Input | dict[str, Any] | None]]
+ListAntaTestTuples = list[tuple[type[AntaTest], Optional[Union[AntaTest.Input, dict[str, Any]]]]]
 
 
 class AntaTestDefinition(BaseModel):
@@ -120,15 +120,10 @@ class AntaTestDefinition(BaseModel):
         except ValidationError as e:
             inputs_msg = str(e).replace("\n", "\n\t")
             err_type = "wrong_test_inputs"
-            template_msg = "{test_name} test inputs are not valid: {error_details}\n"
             raise PydanticCustomError(
                 err_type,
-                template_msg,
-                {
-                    "test_name": test_class.name,
-                    "error_details": inputs_msg,
-                    "errors": e.errors(),
-                },
+                f"{test_class.name} test inputs are not valid: {inputs_msg}\n",
+                {"errors": e.errors()},
             ) from e
         msg = f"Could not instantiate inputs as type {type(data).__name__} is not valid"
         raise ValueError(msg)
@@ -160,14 +155,6 @@ class AntaCatalogFile(RootModel[dict[ImportString[Any], list[AntaTestDefinition]
     """
 
     root: dict[ImportString[Any], list[AntaTestDefinition]]
-
-    @model_serializer
-    def serialize_model(self) -> dict[str, list[dict[str, Any]]]:
-        """Return a JSON-serializable dictionary from this model."""
-        return {
-            module.__name__: [{test_def.test.name: test_def.inputs.model_dump(mode="json", exclude_unset=True)} for test_def in test_definitions]
-            for module, test_definitions in self.root.items()
-        }
 
     @staticmethod
     def flatten_modules(data: dict[str, Any], package: str | None = None) -> dict[ModuleType, list[Any]]:
@@ -263,7 +250,7 @@ class AntaCatalogFile(RootModel[dict[ImportString[Any], list[AntaTestDefinition]
         # This could be improved.
         # https://github.com/pydantic/pydantic/issues/1043
         # Explore if this worth using this: https://github.com/NowanIlfideme/pydantic-yaml
-        return safe_dump(safe_load(self.model_dump_json()), width=math.inf)
+        return safe_dump(safe_load(self.model_dump_json(serialize_as_any=True, exclude_unset=True)), indent=2, width=math.inf)
 
     def to_json(self) -> str:
         """Return a JSON representation string of this model.
@@ -273,7 +260,7 @@ class AntaCatalogFile(RootModel[dict[ImportString[Any], list[AntaTestDefinition]
         str
             The JSON representation string of this model.
         """
-        return self.model_dump_json(indent=2)
+        return self.model_dump_json(serialize_as_any=True, exclude_unset=True, indent=2)
 
 
 class AntaCatalog:
@@ -302,7 +289,11 @@ class AntaCatalog:
             self._tests = tests
         self._filename: Path | None = None
         if filename is not None:
-            self._filename = filename if isinstance(filename, Path) else Path(filename)
+            if isinstance(filename, Path):
+                self._filename = filename
+            else:
+                self._filename = Path(filename)
+
         self.indexes_built: bool
         self.tag_to_tests: defaultdict[str | None, set[AntaTestDefinition]]
         self._init_indexes()
@@ -332,8 +323,6 @@ class AntaCatalog:
                 msg = "A test in the catalog must be an AntaTestDefinition instance"
                 raise TypeError(msg)
         self._tests = value
-        # Tests were modified so indexes need to be rebuilt.
-        self.clear_indexes()
 
     @staticmethod
     def parse(filename: str | Path, file_format: Literal["yaml", "json"] = "yaml") -> AntaCatalog:
@@ -449,11 +438,12 @@ class AntaCatalog:
         combined_tests = list(chain(*(catalog.tests for catalog in catalogs)))
         return cls(tests=combined_tests)
 
-    @deprecated(
-        "This method is deprecated, use `AntaCatalogs.merge_catalogs` class method instead. This will be removed in ANTA v2.0.0.", category=DeprecationWarning
-    )
     def merge(self, catalog: AntaCatalog) -> AntaCatalog:
         """Merge two AntaCatalog instances.
+
+        Warning
+        -------
+        This method is deprecated and will be removed in ANTA v2.0. Use `AntaCatalog.merge_catalogs()` instead.
 
         Parameters
         ----------
@@ -465,6 +455,12 @@ class AntaCatalog:
         AntaCatalog
             A new AntaCatalog instance containing the tests of the two instances.
         """
+        # TODO: Use a decorator to deprecate this method instead. See https://github.com/aristanetworks/anta/issues/754
+        warn(
+            message="AntaCatalog.merge() is deprecated and will be removed in ANTA v2.0. Use AntaCatalog.merge_catalogs() instead.",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         return self.merge_catalogs([self, catalog])
 
     def dump(self) -> AntaCatalogFile:

@@ -1,18 +1,15 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Tests for anta.tests.security.py."""
 
 from __future__ import annotations
 
-import sys
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
-from anta.models import AntaTest
-from anta.result_manager.models import AntaTestStatus
 from anta.tests.security import (
     VerifyAPIHttpsSSL,
     VerifyAPIHttpStatus,
@@ -25,7 +22,6 @@ from anta.tests.security import (
     VerifyIPSecConnHealth,
     VerifyIPv4ACL,
     VerifySpecificIPSecConn,
-    VerifySSHFIPSRestrictions,
     VerifySSHIPv4Acl,
     VerifySSHIPv6Acl,
     VerifySSHStatus,
@@ -33,79 +29,107 @@ from anta.tests.security import (
 )
 from tests.units.anta_tests import test
 
-if TYPE_CHECKING:
-    from tests.units.anta_tests import AntaUnitTestData
-
-DATA: AntaUnitTestData = {
-    (VerifySSHStatus, "success"): {
+DATA: list[dict[str, Any]] = [
+    {
+        "name": "success",
+        "test": VerifySSHStatus,
         "eos_data": ["SSHD status for Default VRF is disabled\nSSH connection limit is 50\nSSH per host connection limit is 20\nFIPS status: disabled\n\n"],
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifySSHStatus, "error-missing-ssh-status"): {
+    {
+        "name": "error-missing-ssh-status",
+        "test": VerifySSHStatus,
         "eos_data": ["SSH per host connection limit is 20\nFIPS status: disabled\n\n"],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Could not find SSH status in returned output"]},
+        "inputs": None,
+        "expected": {"result": "failure", "messages": ["Could not find SSH status in returned output."]},
     },
-    (VerifySSHStatus, "failure-ssh-enabled"): {
+    {
+        "name": "failure-ssh-enabled",
+        "test": VerifySSHStatus,
         "eos_data": ["SSHD status for Default VRF is enabled\nSSH connection limit is 50\nSSH per host connection limit is 20\nFIPS status: disabled\n\n"],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["SSHD status for Default VRF is enabled"]},
+        "inputs": None,
+        "expected": {"result": "failure", "messages": ["SSHD status for Default VRF is enabled"]},
     },
-    (VerifySSHStatus, "success-4.32"): {
+    {
+        "name": "success-4.32",
+        "test": VerifySSHStatus,
         "eos_data": [
-            (
-                "User certificate authentication methods: none (neither trusted CA nor SSL profile configured)\n"
-                "SSHD status for Default VRF: disabled\nSSH connection limit: 50\nSSH per host connection limit: 20\nFIPS status: disabled\n\n"
-            )
+            "User certificate authentication methods: none (neither trusted CA nor SSL profile configured)\n"
+            "SSHD status for Default VRF: disabled\nSSH connection limit: 50\nSSH per host connection limit: 20\nFIPS status: disabled\n\n"
         ],
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifySSHStatus, "failure-ssh-enabled-4.32"): {
+    {
+        "name": "failure-ssh-enabled-4.32",
+        "test": VerifySSHStatus,
         "eos_data": [
-            (
-                "User certificate authentication methods: none (neither trusted CA nor SSL profile configured)\nSSHD status for Default VRF: enabled\n"
-                "SSH connection limit: 50\nSSH per host connection limit: 20\nFIPS status: disabled\n\n"
-            )
+            "User certificate authentication methods: none (neither trusted CA nor SSL profile configured)\n"
+            "SSHD status for Default VRF: enabled\nSSH connection limit: 50\nSSH per host connection limit: 20\nFIPS status: disabled\n\n"
         ],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["SSHD status for Default VRF: enabled"]},
+        "inputs": None,
+        "expected": {"result": "failure", "messages": ["SSHD status for Default VRF: enabled"]},
     },
-    (VerifySSHIPv4Acl, "success"): {
+    {
+        "name": "success",
+        "test": VerifySSHIPv4Acl,
         "eos_data": [{"ipAclList": {"aclList": [{"type": "Ip4Acl", "name": "ACL_IPV4_SSH", "configuredVrfs": ["MGMT"], "activeVrfs": ["MGMT"]}]}}],
         "inputs": {"number": 1, "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifySSHIPv4Acl, "failure-wrong-number"): {
+    {
+        "name": "failure-wrong-number",
+        "test": VerifySSHIPv4Acl,
         "eos_data": [{"ipAclList": {"aclList": []}}],
         "inputs": {"number": 1, "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["VRF: MGMT - SSH IPv4 ACL(s) count mismatch - Expected: 1 Actual: 0"]},
+        "expected": {"result": "failure", "messages": ["Expected 1 SSH IPv4 ACL(s) in vrf MGMT but got 0"]},
     },
-    (VerifySSHIPv4Acl, "failure-wrong-vrf"): {
+    {
+        "name": "failure-wrong-vrf",
+        "test": VerifySSHIPv4Acl,
         "eos_data": [{"ipAclList": {"aclList": [{"type": "Ip4Acl", "name": "ACL_IPV4_SSH", "configuredVrfs": ["default"], "activeVrfs": ["default"]}]}}],
         "inputs": {"number": 1, "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["VRF: MGMT - Following SSH IPv4 ACL(s) not configured or active: ACL_IPV4_SSH"]},
+        "expected": {"result": "failure", "messages": ["SSH IPv4 ACL(s) not configured or active in vrf MGMT: ['ACL_IPV4_SSH']"]},
     },
-    (VerifySSHIPv6Acl, "success"): {
+    {
+        "name": "success",
+        "test": VerifySSHIPv6Acl,
         "eos_data": [{"ipv6AclList": {"aclList": [{"type": "Ip6Acl", "name": "ACL_IPV6_SSH", "configuredVrfs": ["MGMT"], "activeVrfs": ["MGMT"]}]}}],
         "inputs": {"number": 1, "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifySSHIPv6Acl, "failure-wrong-number"): {
+    {
+        "name": "failure-wrong-number",
+        "test": VerifySSHIPv6Acl,
         "eos_data": [{"ipv6AclList": {"aclList": []}}],
         "inputs": {"number": 1, "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["VRF: MGMT - SSH IPv6 ACL(s) count mismatch - Expected: 1 Actual: 0"]},
+        "expected": {"result": "failure", "messages": ["Expected 1 SSH IPv6 ACL(s) in vrf MGMT but got 0"]},
     },
-    (VerifySSHIPv6Acl, "failure-wrong-vrf"): {
+    {
+        "name": "failure-wrong-vrf",
+        "test": VerifySSHIPv6Acl,
         "eos_data": [{"ipv6AclList": {"aclList": [{"type": "Ip6Acl", "name": "ACL_IPV6_SSH", "configuredVrfs": ["default"], "activeVrfs": ["default"]}]}}],
         "inputs": {"number": 1, "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["VRF: MGMT - Following SSH IPv6 ACL(s) not configured or active: ACL_IPV6_SSH"]},
+        "expected": {"result": "failure", "messages": ["SSH IPv6 ACL(s) not configured or active in vrf MGMT: ['ACL_IPV6_SSH']"]},
     },
-    (VerifyTelnetStatus, "success"): {
+    {
+        "name": "success",
+        "test": VerifyTelnetStatus,
         "eos_data": [{"serverState": "disabled", "vrfName": "default", "maxTelnetSessions": 20, "maxTelnetSessionsPerHost": 20}],
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyTelnetStatus, "failure"): {
+    {
+        "name": "failure",
+        "test": VerifyTelnetStatus,
         "eos_data": [{"serverState": "enabled", "vrfName": "default", "maxTelnetSessions": 20, "maxTelnetSessionsPerHost": 20}],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Telnet status for Default VRF is enabled"]},
+        "inputs": None,
+        "expected": {"result": "failure", "messages": ["Telnet status for Default VRF is enabled"]},
     },
-    (VerifyAPIHttpStatus, "success"): {
+    {
+        "name": "success",
+        "test": VerifyAPIHttpStatus,
         "eos_data": [
             {
                 "enabled": True,
@@ -115,11 +139,14 @@ DATA: AntaUnitTestData = {
                 "unixSocketServer": {"configured": False, "running": False},
                 "sslProfile": {"name": "API_SSL_Profile", "configured": True, "state": "valid"},
                 "tlsProtocol": ["1.2"],
-            }
+            },
         ],
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyAPIHttpStatus, "failure"): {
+    {
+        "name": "failure",
+        "test": VerifyAPIHttpStatus,
         "eos_data": [
             {
                 "enabled": True,
@@ -129,11 +156,14 @@ DATA: AntaUnitTestData = {
                 "unixSocketServer": {"configured": False, "running": False},
                 "sslProfile": {"name": "API_SSL_Profile", "configured": True, "state": "valid"},
                 "tlsProtocol": ["1.2"],
-            }
+            },
         ],
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["eAPI HTTP server is enabled globally"]},
+        "inputs": None,
+        "expected": {"result": "failure", "messages": ["eAPI HTTP server is enabled globally"]},
     },
-    (VerifyAPIHttpsSSL, "success"): {
+    {
+        "name": "success",
+        "test": VerifyAPIHttpsSSL,
         "eos_data": [
             {
                 "enabled": True,
@@ -143,12 +173,14 @@ DATA: AntaUnitTestData = {
                 "unixSocketServer": {"configured": False, "running": False},
                 "sslProfile": {"name": "API_SSL_Profile", "configured": True, "state": "valid"},
                 "tlsProtocol": ["1.2"],
-            }
+            },
         ],
         "inputs": {"profile": "API_SSL_Profile"},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyAPIHttpsSSL, "failure-not-configured"): {
+    {
+        "name": "failure-not-configured",
+        "test": VerifyAPIHttpsSSL,
         "eos_data": [
             {
                 "enabled": True,
@@ -157,12 +189,14 @@ DATA: AntaUnitTestData = {
                 "httpsServer": {"configured": True, "running": True, "port": 443},
                 "unixSocketServer": {"configured": False, "running": False},
                 "tlsProtocol": ["1.2"],
-            }
+            },
         ],
         "inputs": {"profile": "API_SSL_Profile"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["eAPI HTTPS server SSL profile API_SSL_Profile is not configured"]},
+        "expected": {"result": "failure", "messages": ["eAPI HTTPS server SSL profile (API_SSL_Profile) is not configured"]},
     },
-    (VerifyAPIHttpsSSL, "failure-misconfigured-invalid"): {
+    {
+        "name": "failure-misconfigured-invalid",
+        "test": VerifyAPIHttpsSSL,
         "eos_data": [
             {
                 "enabled": True,
@@ -172,58 +206,80 @@ DATA: AntaUnitTestData = {
                 "unixSocketServer": {"configured": False, "running": False},
                 "sslProfile": {"name": "Wrong_SSL_Profile", "configured": True, "state": "valid"},
                 "tlsProtocol": ["1.2"],
-            }
+            },
         ],
         "inputs": {"profile": "API_SSL_Profile"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["eAPI HTTPS server SSL profile API_SSL_Profile is misconfigured or invalid"]},
+        "expected": {"result": "failure", "messages": ["eAPI HTTPS server SSL profile (API_SSL_Profile) is misconfigured or invalid"]},
     },
-    (VerifyAPIIPv4Acl, "success"): {
+    {
+        "name": "success",
+        "test": VerifyAPIIPv4Acl,
         "eos_data": [{"ipAclList": {"aclList": [{"type": "Ip4Acl", "name": "ACL_IPV4_API", "configuredVrfs": ["MGMT"], "activeVrfs": ["MGMT"]}]}}],
         "inputs": {"number": 1, "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyAPIIPv4Acl, "failure-wrong-number"): {
+    {
+        "name": "failure-wrong-number",
+        "test": VerifyAPIIPv4Acl,
         "eos_data": [{"ipAclList": {"aclList": []}}],
         "inputs": {"number": 1, "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["VRF: MGMT - eAPI IPv4 ACL(s) count mismatch - Expected: 1 Actual: 0"]},
+        "expected": {"result": "failure", "messages": ["Expected 1 eAPI IPv4 ACL(s) in vrf MGMT but got 0"]},
     },
-    (VerifyAPIIPv4Acl, "failure-wrong-vrf"): {
+    {
+        "name": "failure-wrong-vrf",
+        "test": VerifyAPIIPv4Acl,
         "eos_data": [{"ipAclList": {"aclList": [{"type": "Ip4Acl", "name": "ACL_IPV4_API", "configuredVrfs": ["default"], "activeVrfs": ["default"]}]}}],
         "inputs": {"number": 1, "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["VRF: MGMT - Following eAPI IPv4 ACL(s) not configured or active: ACL_IPV4_API"]},
+        "expected": {"result": "failure", "messages": ["eAPI IPv4 ACL(s) not configured or active in vrf MGMT: ['ACL_IPV4_API']"]},
     },
-    (VerifyAPIIPv6Acl, "success"): {
+    {
+        "name": "success",
+        "test": VerifyAPIIPv6Acl,
         "eos_data": [{"ipv6AclList": {"aclList": [{"type": "Ip6Acl", "name": "ACL_IPV6_API", "configuredVrfs": ["MGMT"], "activeVrfs": ["MGMT"]}]}}],
         "inputs": {"number": 1, "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyAPIIPv6Acl, "failure-wrong-number"): {
+    {
+        "name": "failure-wrong-number",
+        "test": VerifyAPIIPv6Acl,
         "eos_data": [{"ipv6AclList": {"aclList": []}}],
         "inputs": {"number": 1, "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["VRF: MGMT - eAPI IPv6 ACL(s) count mismatch - Expected: 1 Actual: 0"]},
+        "expected": {"result": "failure", "messages": ["Expected 1 eAPI IPv6 ACL(s) in vrf MGMT but got 0"]},
     },
-    (VerifyAPIIPv6Acl, "failure-wrong-vrf"): {
+    {
+        "name": "failure-wrong-vrf",
+        "test": VerifyAPIIPv6Acl,
         "eos_data": [{"ipv6AclList": {"aclList": [{"type": "Ip6Acl", "name": "ACL_IPV6_API", "configuredVrfs": ["default"], "activeVrfs": ["default"]}]}}],
         "inputs": {"number": 1, "vrf": "MGMT"},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["VRF: MGMT - Following eAPI IPv6 ACL(s) not configured or active: ACL_IPV6_API"]},
+        "expected": {"result": "failure", "messages": ["eAPI IPv6 ACL(s) not configured or active in vrf MGMT: ['ACL_IPV6_API']"]},
     },
-    (VerifyAPISSLCertificate, "success"): {
+    {
+        "name": "success",
+        "test": VerifyAPISSLCertificate,
         "eos_data": [
             {
                 "certificates": {
                     "ARISTA_ROOT_CA.crt": {
                         "subject": {"commonName": "Arista Networks Internal IT Root Cert Authority"},
                         "notAfter": 2127420899,
-                        "publicKey": {"encryptionAlgorithm": "RSA", "size": 4096},
+                        "publicKey": {
+                            "encryptionAlgorithm": "RSA",
+                            "size": 4096,
+                        },
                     },
                     "ARISTA_SIGNING_CA.crt": {
                         "subject": {"commonName": "AristaIT-ICA ECDSA Issuing Cert Authority"},
                         "notAfter": 2127420899,
-                        "publicKey": {"encryptionAlgorithm": "ECDSA", "size": 256},
+                        "publicKey": {
+                            "encryptionAlgorithm": "ECDSA",
+                            "size": 256,
+                        },
                     },
                 }
             },
-            {"utcTime": 1702288467.6736515},
+            {
+                "utcTime": 1702288467.6736515,
+            },
         ],
         "inputs": {
             "certificates": [
@@ -243,20 +299,27 @@ DATA: AntaUnitTestData = {
                 },
             ]
         },
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyAPISSLCertificate, "failure-certificate-not-configured"): {
+    {
+        "name": "failure-certificate-not-configured",
+        "test": VerifyAPISSLCertificate,
         "eos_data": [
             {
                 "certificates": {
                     "ARISTA_SIGNING_CA.crt": {
                         "subject": {"commonName": "AristaIT-ICA ECDSA Issuing Cert Authority"},
                         "notAfter": 2127420899,
-                        "publicKey": {"encryptionAlgorithm": "ECDSA", "size": 256},
-                    }
+                        "publicKey": {
+                            "encryptionAlgorithm": "ECDSA",
+                            "size": 256,
+                        },
+                    },
                 }
             },
-            {"utcTime": 1702288467.6736515},
+            {
+                "utcTime": 1702288467.6736515,
+            },
         ],
         "inputs": {
             "certificates": [
@@ -276,20 +339,30 @@ DATA: AntaUnitTestData = {
                 },
             ]
         },
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Certificate: ARISTA_ROOT_CA.crt - Not found"]},
+        "expected": {
+            "result": "failure",
+            "messages": ["Certificate: ARISTA_ROOT_CA.crt - Not found"],
+        },
     },
-    (VerifyAPISSLCertificate, "failure-certificate-expired"): {
+    {
+        "name": "failure-certificate-expired",
+        "test": VerifyAPISSLCertificate,
         "eos_data": [
             {
                 "certificates": {
                     "ARISTA_ROOT_CA.crt": {
                         "subject": {"commonName": "Arista Networks Internal IT Root Cert Authority"},
                         "notAfter": 1702533518,
-                        "publicKey": {"encryptionAlgorithm": "RSA", "size": 4096},
-                    }
+                        "publicKey": {
+                            "encryptionAlgorithm": "RSA",
+                            "size": 4096,
+                        },
+                    },
                 }
             },
-            {"utcTime": 1702622372.2240553},
+            {
+                "utcTime": 1702622372.2240553,
+            },
         ],
         "inputs": {
             "certificates": [
@@ -299,28 +372,41 @@ DATA: AntaUnitTestData = {
                     "common_name": "Arista Networks Internal IT Root Cert Authority",
                     "encryption_algorithm": "RSA",
                     "key_size": 4096,
-                }
+                },
             ]
         },
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Certificate: ARISTA_ROOT_CA.crt - certificate expired"]},
+        "expected": {
+            "result": "failure",
+            "messages": ["Certificate: ARISTA_ROOT_CA.crt - certificate expired"],
+        },
     },
-    (VerifyAPISSLCertificate, "failure-certificate-about-to-expire"): {
+    {
+        "name": "failure-certificate-about-to-expire",
+        "test": VerifyAPISSLCertificate,
         "eos_data": [
             {
                 "certificates": {
                     "ARISTA_ROOT_CA.crt": {
                         "subject": {"commonName": "Arista Networks Internal IT Root Cert Authority"},
                         "notAfter": 1704782709,
-                        "publicKey": {"encryptionAlgorithm": "RSA", "size": 4096},
+                        "publicKey": {
+                            "encryptionAlgorithm": "RSA",
+                            "size": 4096,
+                        },
                     },
                     "ARISTA_SIGNING_CA.crt": {
                         "subject": {"commonName": "AristaIT-ICA ECDSA Issuing Cert Authority"},
                         "notAfter": 1705992709,
-                        "publicKey": {"encryptionAlgorithm": "ECDSA", "size": 256},
+                        "publicKey": {
+                            "encryptionAlgorithm": "ECDSA",
+                            "size": 256,
+                        },
                     },
                 }
             },
-            {"utcTime": 1702622372.2240553},
+            {
+                "utcTime": 1702622372.2240553,
+            },
         ],
         "inputs": {
             "certificates": [
@@ -341,27 +427,39 @@ DATA: AntaUnitTestData = {
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Certificate: ARISTA_ROOT_CA.crt - set to expire within the threshold - Threshold: 30 days Actual: 25 days"],
+            "result": "failure",
+            "messages": [
+                "Certificate: ARISTA_ROOT_CA.crt - set to expire within the threshold - Threshold: 30 days Actual: 25 days",
+            ],
         },
     },
-    (VerifyAPISSLCertificate, "failure-wrong-subject-name"): {
+    {
+        "name": "failure-wrong-subject-name",
+        "test": VerifyAPISSLCertificate,
         "eos_data": [
             {
                 "certificates": {
                     "ARISTA_ROOT_CA.crt": {
                         "subject": {"commonName": "AristaIT-ICA Networks Internal IT Root Cert Authority"},
                         "notAfter": 2127420899,
-                        "publicKey": {"encryptionAlgorithm": "RSA", "size": 4096},
+                        "publicKey": {
+                            "encryptionAlgorithm": "RSA",
+                            "size": 4096,
+                        },
                     },
                     "ARISTA_SIGNING_CA.crt": {
                         "subject": {"commonName": "Arista ECDSA Issuing Cert Authority"},
                         "notAfter": 2127420899,
-                        "publicKey": {"encryptionAlgorithm": "ECDSA", "size": 256},
+                        "publicKey": {
+                            "encryptionAlgorithm": "ECDSA",
+                            "size": 256,
+                        },
                     },
                 }
             },
-            {"utcTime": 1702288467.6736515},
+            {
+                "utcTime": 1702288467.6736515,
+            },
         ],
         "inputs": {
             "certificates": [
@@ -382,36 +480,42 @@ DATA: AntaUnitTestData = {
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
-                (
-                    "Certificate: ARISTA_SIGNING_CA.crt - incorrect common name - "
-                    "Expected: AristaIT-ICA ECDSA Issuing Cert Authority Actual: Arista ECDSA Issuing Cert Authority"
-                ),
-                (
-                    "Certificate: ARISTA_ROOT_CA.crt - incorrect common name - Expected: Arista Networks Internal IT "
-                    "Root Cert Authority Actual: AristaIT-ICA Networks Internal IT Root Cert Authority"
-                ),
+                "Certificate: ARISTA_SIGNING_CA.crt - incorrect common name - Expected: AristaIT-ICA ECDSA Issuing Cert Authority "
+                "Actual: Arista ECDSA Issuing Cert Authority",
+                "Certificate: ARISTA_ROOT_CA.crt - incorrect common name - Expected: Arista Networks Internal IT Root Cert Authority "
+                "Actual: AristaIT-ICA Networks Internal IT Root Cert Authority",
             ],
         },
     },
-    (VerifyAPISSLCertificate, "failure-wrong-encryption-type-and-size"): {
+    {
+        "name": "failure-wrong-encryption-type-and-size",
+        "test": VerifyAPISSLCertificate,
         "eos_data": [
             {
                 "certificates": {
                     "ARISTA_ROOT_CA.crt": {
                         "subject": {"commonName": "Arista Networks Internal IT Root Cert Authority"},
                         "notAfter": 2127420899,
-                        "publicKey": {"encryptionAlgorithm": "ECDSA", "size": 256},
+                        "publicKey": {
+                            "encryptionAlgorithm": "ECDSA",
+                            "size": 256,
+                        },
                     },
                     "ARISTA_SIGNING_CA.crt": {
                         "subject": {"commonName": "AristaIT-ICA ECDSA Issuing Cert Authority"},
                         "notAfter": 2127420899,
-                        "publicKey": {"encryptionAlgorithm": "RSA", "size": 4096},
+                        "publicKey": {
+                            "encryptionAlgorithm": "RSA",
+                            "size": 4096,
+                        },
                     },
                 }
             },
-            {"utcTime": 1702288467.6736515},
+            {
+                "utcTime": 1702288467.6736515,
+            },
         ],
         "inputs": {
             "certificates": [
@@ -432,7 +536,7 @@ DATA: AntaUnitTestData = {
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
                 "Certificate: ARISTA_SIGNING_CA.crt - incorrect encryption algorithm - Expected: ECDSA Actual: RSA",
                 "Certificate: ARISTA_SIGNING_CA.crt - incorrect public key - Expected: 256 Actual: 4096",
@@ -441,15 +545,25 @@ DATA: AntaUnitTestData = {
             ],
         },
     },
-    (VerifyAPISSLCertificate, "failure-missing-algorithm-details"): {
+    {
+        "name": "failure-missing-algorithm-details",
+        "test": VerifyAPISSLCertificate,
         "eos_data": [
             {
                 "certificates": {
-                    "ARISTA_ROOT_CA.crt": {"subject": {"commonName": "Arista Networks Internal IT Root Cert Authority"}, "notAfter": 2127420899},
-                    "ARISTA_SIGNING_CA.crt": {"subject": {"commonName": "AristaIT-ICA ECDSA Issuing Cert Authority"}, "notAfter": 2127420899},
+                    "ARISTA_ROOT_CA.crt": {
+                        "subject": {"commonName": "Arista Networks Internal IT Root Cert Authority"},
+                        "notAfter": 2127420899,
+                    },
+                    "ARISTA_SIGNING_CA.crt": {
+                        "subject": {"commonName": "AristaIT-ICA ECDSA Issuing Cert Authority"},
+                        "notAfter": 2127420899,
+                    },
                 }
             },
-            {"utcTime": 1702288467.6736515},
+            {
+                "utcTime": 1702288467.6736515,
+            },
         ],
         "inputs": {
             "certificates": [
@@ -470,7 +584,7 @@ DATA: AntaUnitTestData = {
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
                 "Certificate: ARISTA_SIGNING_CA.crt - incorrect encryption algorithm - Expected: ECDSA Actual: Not found",
                 "Certificate: ARISTA_SIGNING_CA.crt - incorrect public key - Expected: 256 Actual: Not found",
@@ -479,173 +593,115 @@ DATA: AntaUnitTestData = {
             ],
         },
     },
-    (VerifyBannerLogin, "success"): {
+    {
+        "name": "success",
+        "test": VerifyBannerLogin,
         "eos_data": [
             {
-                "loginBanner": (
-                    "Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0"
-                    "\nthat can be found in the LICENSE file.\n"
-                )
-            }
-        ],
-        "inputs": {
-            "login_banner": (
-                "Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
-                "that can be found in the LICENSE file.\n"
-            )
-        },
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyBannerLogin, "success-multiline"): {
-        "eos_data": [
-            {
-                "loginBanner": (
-                    "Copyright (c) 2023-2024 Arista Networks, Inc.\n"
-                    "                            Use of this source code is governed by the Apache License 2.0\n"
-                    "                            that can be found in the LICENSE file.\n"
-                )
-            }
-        ],
-        "inputs": {
-            "login_banner": (
-                "Copyright (c) 2023-2024 Arista Networks, Inc.\n                            "
-                "Use of this source code is governed by the Apache License 2.0\n                            that can be found in the LICENSE file.\n"
-            )
-        },
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyBannerLogin, "success-leading-whitespaces"): {
-        "eos_data": [{"loginBanner": "    Copyright (c) 2023-2024 Arista Networks, Inc.\n"}],
-        "inputs": {"login_banner": "    Copyright (c) 2023-2024 Arista Networks, Inc.\n"},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyBannerLogin, "failure-incorrect-login-banner"): {
-        "eos_data": [
-            {
-                "loginBanner": (
-                    "Copyright (c) 2023 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
-                    "that can be found in the LICENSE file.\n"
-                )
-            }
-        ],
-        "inputs": {
-            "login_banner": (
-                "Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
-                "that can be found in the LICENSE file.\n"
-            )
-        },
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": [
-                (
-                    "Incorrect login banner configured - Expected: 'Copyright (c) 2023-2024 Arista Networks, Inc.\n"
-                    "Use of this source code is governed by the Apache License 2.0\nthat can be found in the LICENSE file.\n'"
-                    " Actual: 'Copyright (c) 2023 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0"
-                    "\nthat can be found in the LICENSE file.\n'"
-                )
-            ],
-        },
-    },
-    (VerifyBannerLogin, "failure-login-banner-not-configured"): {
-        "eos_data": [{"loginBanner": ""}],
-        "inputs": {
-            "login_banner": (
-                "Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
-                "that can be found in the LICENSE file.\n"
-            )
-        },
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Login banner is not configured"]},
-    },
-    (VerifyBannerMotd, "success"): {
-        "eos_data": [
-            {
-                "motd": (
-                    "Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
-                    "that can be found in the LICENSE file."
-                )
-            }
-        ],
-        "inputs": {
-            "motd_banner": (
-                "Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
+                "loginBanner": "Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
                 "that can be found in the LICENSE file."
-            )
-        },
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyBannerMotd, "success-multiline"): {
-        "eos_data": [
-            {
-                "motd": (
-                    "Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
-                    "that can be found in the LICENSE file.\n"
-                )
             }
         ],
         "inputs": {
-            "motd_banner": (
-                "Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed "
-                "by the Apache License 2.0\nthat can be found in the LICENSE file.\n"
-            )
+            "login_banner": "Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
+            "that can be found in the LICENSE file."
         },
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyBannerMotd, "success-leading-whitespaces"): {
-        "eos_data": [{"motd": "    Copyright (c) 2023-2024 Arista Networks, Inc.\n"}],
-        "inputs": {"motd_banner": ("    Copyright (c) 2023-2024 Arista Networks, Inc.\n")},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyBannerMotd, "failure-incorrect-motd-banner"): {
+    {
+        "name": "success-multiline",
+        "test": VerifyBannerLogin,
         "eos_data": [
             {
-                "motd": (
-                    "Copyright (c) 2023 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
-                    "that can be found in the LICENSE file.\n"
-                )
-            }
-        ],
-        "inputs": {
-            "motd_banner": (
-                "Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
-                "that can be found in the LICENSE file.\n"
-            )
-        },
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": [
-                (
-                    "Incorrect MOTD banner configured - Expected: 'Copyright (c) 2023-2024 Arista Networks, Inc.\n"
-                    "Use of this source code is governed by the Apache License 2.0\nthat can be found in the LICENSE file.\n' "
-                    "Actual: 'Copyright (c) 2023 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
-                    "that can be found in the LICENSE file.\n'"
-                )
-            ],
-        },
-    },
-    (VerifyBannerMotd, "failure-leading-whitespaces"): {
-        "eos_data": [{"motd": "Copyright (c) 2023 Arista Networks, Inc.\n"}],
-        "inputs": {"motd_banner": ("    Copyright (c) 2023-2024 Arista Networks, Inc.\n")},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": [
-                (
-                    "Incorrect MOTD banner configured - Expected: '    Copyright (c) 2023-2024 Arista Networks, Inc.\n' "
-                    "Actual: 'Copyright (c) 2023 Arista Networks, Inc.\n'"
-                )
-            ],
-        },
-    },
-    (VerifyBannerMotd, "failure-login-banner-not-configured"): {
-        "eos_data": [{"motd": ""}],
-        "inputs": {
-            "motd_banner": (
-                "Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
+                "loginBanner": "Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
                 "that can be found in the LICENSE file."
-            )
+            }
+        ],
+        "inputs": {
+            "login_banner": """Copyright (c) 2023-2024 Arista Networks, Inc.
+                            Use of this source code is governed by the Apache License 2.0
+                            that can be found in the LICENSE file."""
         },
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["MOTD banner is not configured"]},
+        "expected": {"result": "success"},
     },
-    (VerifyIPv4ACL, "success"): {
+    {
+        "name": "failure-incorrect-login-banner",
+        "test": VerifyBannerLogin,
+        "eos_data": [
+            {
+                "loginBanner": "Copyright (c) 2023 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
+                "that can be found in the LICENSE file."
+            }
+        ],
+        "inputs": {
+            "login_banner": "Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
+            "that can be found in the LICENSE file."
+        },
+        "expected": {
+            "result": "failure",
+            "messages": [
+                "Expected `Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
+                "that can be found in the LICENSE file.` as the login banner, but found `Copyright (c) 2023 Arista Networks, Inc.\nUse of this source code is "
+                "governed by the Apache License 2.0\nthat can be found in the LICENSE file.` instead."
+            ],
+        },
+    },
+    {
+        "name": "success",
+        "test": VerifyBannerMotd,
+        "eos_data": [
+            {
+                "motd": "Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
+                "that can be found in the LICENSE file."
+            }
+        ],
+        "inputs": {
+            "motd_banner": "Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
+            "that can be found in the LICENSE file."
+        },
+        "expected": {"result": "success"},
+    },
+    {
+        "name": "success-multiline",
+        "test": VerifyBannerMotd,
+        "eos_data": [
+            {
+                "motd": "Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
+                "that can be found in the LICENSE file."
+            }
+        ],
+        "inputs": {
+            "motd_banner": """Copyright (c) 2023-2024 Arista Networks, Inc.
+                            Use of this source code is governed by the Apache License 2.0
+                            that can be found in the LICENSE file."""
+        },
+        "expected": {"result": "success"},
+    },
+    {
+        "name": "failure-incorrect-motd-banner",
+        "test": VerifyBannerMotd,
+        "eos_data": [
+            {
+                "motd": "Copyright (c) 2023 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
+                "that can be found in the LICENSE file."
+            }
+        ],
+        "inputs": {
+            "motd_banner": "Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
+            "that can be found in the LICENSE file."
+        },
+        "expected": {
+            "result": "failure",
+            "messages": [
+                "Expected `Copyright (c) 2023-2024 Arista Networks, Inc.\nUse of this source code is governed by the Apache License 2.0\n"
+                "that can be found in the LICENSE file.` as the motd banner, but found `Copyright (c) 2023 Arista Networks, Inc.\nUse of this source code is "
+                "governed by the Apache License 2.0\nthat can be found in the LICENSE file.` instead."
+            ],
+        },
+    },
+    {
+        "name": "success",
+        "test": VerifyIPv4ACL,
         "eos_data": [
             {
                 "aclList": [
@@ -659,10 +715,13 @@ DATA: AntaUnitTestData = {
                     },
                     {
                         "name": "LabTest",
-                        "sequence": [{"text": "permit icmp any any", "sequenceNumber": 10}, {"text": "permit tcp any any range 5900 5910", "sequenceNumber": 20}],
+                        "sequence": [
+                            {"text": "permit icmp any any", "sequenceNumber": 10},
+                            {"text": "permit tcp any any range 5900 5910", "sequenceNumber": 20},
+                        ],
                     },
                 ]
-            }
+            },
         ],
         "inputs": {
             "ipv4_access_lists": [
@@ -680,14 +739,29 @@ DATA: AntaUnitTestData = {
                 },
             ]
         },
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyIPv4ACL, "failure-no-acl-list"): {
-        "eos_data": [{"aclList": []}],
-        "inputs": {"ipv4_access_lists": [{"name": "default-control-plane-acl", "entries": [{"sequence": 10, "action": "permit icmp any any"}]}]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["No Access Control List (ACL) configured"]},
+    {
+        "name": "failure-no-acl-list",
+        "test": VerifyIPv4ACL,
+        "eos_data": [
+            {"aclList": []},
+        ],
+        "inputs": {
+            "ipv4_access_lists": [
+                {
+                    "name": "default-control-plane-acl",
+                    "entries": [
+                        {"sequence": 10, "action": "permit icmp any any"},
+                    ],
+                },
+            ]
+        },
+        "expected": {"result": "failure", "messages": ["No Access Control List (ACL) configured"]},
     },
-    (VerifyIPv4ACL, "failure-acl-not-found"): {
+    {
+        "name": "failure-acl-not-found",
+        "test": VerifyIPv4ACL,
         "eos_data": [
             {
                 "aclList": [
@@ -700,7 +774,7 @@ DATA: AntaUnitTestData = {
                         ],
                     }
                 ]
-            }
+            },
         ],
         "inputs": {
             "ipv4_access_lists": [
@@ -718,9 +792,11 @@ DATA: AntaUnitTestData = {
                 },
             ]
         },
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["ACL name: LabTest - Not configured"]},
+        "expected": {"result": "failure", "messages": ["ACL name: LabTest - Not configured"]},
     },
-    (VerifyIPv4ACL, "failure-sequence-not-found"): {
+    {
+        "name": "failure-sequence-not-found",
+        "test": VerifyIPv4ACL,
         "eos_data": [
             {
                 "aclList": [
@@ -734,10 +810,13 @@ DATA: AntaUnitTestData = {
                     },
                     {
                         "name": "LabTest",
-                        "sequence": [{"text": "permit icmp any any", "sequenceNumber": 10}, {"text": "permit tcp any any range 5900 5910", "sequenceNumber": 30}],
+                        "sequence": [
+                            {"text": "permit icmp any any", "sequenceNumber": 10},
+                            {"text": "permit tcp any any range 5900 5910", "sequenceNumber": 30},
+                        ],
                     },
                 ]
-            }
+            },
         ],
         "inputs": {
             "ipv4_access_lists": [
@@ -756,11 +835,13 @@ DATA: AntaUnitTestData = {
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": ["ACL name: default-control-plane-acl Sequence: 30 - Not configured", "ACL name: LabTest Sequence: 20 - Not configured"],
         },
     },
-    (VerifyIPv4ACL, "failure-action-not-match"): {
+    {
+        "name": "failure-action-not-match",
+        "test": VerifyIPv4ACL,
         "eos_data": [
             {
                 "aclList": [
@@ -774,10 +855,13 @@ DATA: AntaUnitTestData = {
                     },
                     {
                         "name": "LabTest",
-                        "sequence": [{"text": "permit icmp any any", "sequenceNumber": 10}, {"text": "permit udp any any eq bfd ttl eq 255", "sequenceNumber": 20}],
+                        "sequence": [
+                            {"text": "permit icmp any any", "sequenceNumber": 10},
+                            {"text": "permit udp any any eq bfd ttl eq 255", "sequenceNumber": 20},
+                        ],
                     },
                 ]
-            }
+            },
         ],
         "inputs": {
             "ipv4_access_lists": [
@@ -796,17 +880,17 @@ DATA: AntaUnitTestData = {
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
-                (
-                    "ACL name: default-control-plane-acl Sequence: 30 - action mismatch - "
-                    "Expected: permit udp any any eq bfd ttl eq 255 Actual: permit tcp any any range 5900 5910"
-                ),
+                "ACL name: default-control-plane-acl Sequence: 30 - action mismatch - Expected: permit udp any any eq bfd ttl eq 255 "
+                "Actual: permit tcp any any range 5900 5910",
                 "ACL name: LabTest Sequence: 20 - action mismatch - Expected: permit tcp any any range 5900 5910 Actual: permit udp any any eq bfd ttl eq 255",
             ],
         },
     },
-    (VerifyIPv4ACL, "failure-all-type"): {
+    {
+        "name": "failure-all-type",
+        "test": VerifyIPv4ACL,
         "eos_data": [
             {
                 "aclList": [
@@ -819,7 +903,7 @@ DATA: AntaUnitTestData = {
                         ],
                     }
                 ]
-            }
+            },
         ],
         "inputs": {
             "ipv4_access_lists": [
@@ -838,35 +922,43 @@ DATA: AntaUnitTestData = {
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
                 "ACL name: default-control-plane-acl Sequence: 20 - Not configured",
-                (
-                    "ACL name: default-control-plane-acl Sequence: 30 - action mismatch - "
-                    "Expected: permit udp any any eq bfd ttl eq 255 Actual: permit tcp any any range 5900 5910"
-                ),
+                "ACL name: default-control-plane-acl Sequence: 30 - action mismatch - Expected: permit udp any any eq bfd ttl eq 255 "
+                "Actual: permit tcp any any range 5900 5910",
                 "ACL name: LabTest - Not configured",
             ],
         },
     },
-    (VerifyIPSecConnHealth, "success"): {
+    {
+        "name": "success",
+        "test": VerifyIPSecConnHealth,
         "eos_data": [
             {
                 "connections": {
-                    "default-172.18.3.2-172.18.5.2-srcUnused-0": {"pathDict": {"path9": "Established"}},
-                    "default-100.64.3.2-100.64.5.2-srcUnused-0": {"pathDict": {"path10": "Established"}},
+                    "default-172.18.3.2-172.18.5.2-srcUnused-0": {
+                        "pathDict": {"path9": "Established"},
+                    },
+                    "default-100.64.3.2-100.64.5.2-srcUnused-0": {
+                        "pathDict": {"path10": "Established"},
+                    },
                 }
             }
         ],
         "inputs": {},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyIPSecConnHealth, "failure-no-connection"): {
+    {
+        "name": "failure-no-connection",
+        "test": VerifyIPSecConnHealth,
         "eos_data": [{"connections": {}}],
         "inputs": {},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["No IPv4 security connection configured"]},
+        "expected": {"result": "failure", "messages": ["No IPv4 security connection configured."]},
     },
-    (VerifyIPSecConnHealth, "failure-not-established"): {
+    {
+        "name": "failure-not-established",
+        "test": VerifyIPSecConnHealth,
         "eos_data": [
             {
                 "connections": {
@@ -882,14 +974,17 @@ DATA: AntaUnitTestData = {
         ],
         "inputs": {},
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
-                "Source: 172.18.3.2 Destination: 172.18.2.2 VRF: default - IPv4 security connection not established",
-                "Source: 100.64.3.2 Destination: 100.64.5.2 VRF: Guest - IPv4 security connection not established",
+                "The following IPv4 security connections are not established:\n"
+                "source:172.18.3.2 destination:172.18.2.2 vrf:default\n"
+                "source:100.64.3.2 destination:100.64.5.2 vrf:Guest."
             ],
         },
     },
-    (VerifySpecificIPSecConn, "success-with-connection"): {
+    {
+        "name": "success-with-connection",
+        "test": VerifySpecificIPSecConn,
         "eos_data": [
             {
                 "connections": {
@@ -917,70 +1012,14 @@ DATA: AntaUnitTestData = {
                         {"source_address": "100.64.3.2", "destination_address": "100.64.2.2"},
                         {"source_address": "172.18.3.2", "destination_address": "172.18.2.2"},
                     ],
-                }
+                },
             ]
         },
-        "expected": {
-            "result": AntaTestStatus.SUCCESS,
-            "atomic_results": [
-                {
-                    "description": "Peer: 10.255.0.1 VRF: Guest Source: 100.64.3.2 Destination: 100.64.2.2",
-                    "result": AntaTestStatus.SUCCESS,
-                },
-                {
-                    "description": "Peer: 10.255.0.1 VRF: Guest Source: 172.18.3.2 Destination: 172.18.2.2",
-                    "result": AntaTestStatus.SUCCESS,
-                },
-            ],
-        },
+        "expected": {"result": "success"},
     },
-    (VerifySpecificIPSecConn, "success-with-description"): {
-        "eos_data": [
-            {
-                "connections": {
-                    "Guest-172.18.3.2-172.18.2.2-srcUnused-0": {
-                        "pathDict": {"path9": "Established"},
-                        "saddr": "172.18.3.2",
-                        "daddr": "172.18.2.2",
-                        "tunnelNs": "Guest",
-                    },
-                    "Guest-100.64.3.2-100.64.2.2-srcUnused-0": {
-                        "pathDict": {"path10": "Established"},
-                        "saddr": "100.64.3.2",
-                        "daddr": "100.64.2.2",
-                        "tunnelNs": "Guest",
-                    },
-                }
-            }
-        ],
-        "inputs": {
-            "ip_security_connections": [
-                {
-                    "peer": "10.255.0.1",
-                    "description": "Datacenter IPsec tunnel",
-                    "vrf": "Guest",
-                    "connections": [
-                        {"source_address": "100.64.3.2", "destination_address": "100.64.2.2"},
-                        {"source_address": "172.18.3.2", "destination_address": "172.18.2.2"},
-                    ],
-                }
-            ]
-        },
-        "expected": {
-            "result": AntaTestStatus.SUCCESS,
-            "atomic_results": [
-                {
-                    "description": "Peer: 10.255.0.1 (Datacenter IPsec tunnel) VRF: Guest Source: 100.64.3.2 Destination: 100.64.2.2",
-                    "result": AntaTestStatus.SUCCESS,
-                },
-                {
-                    "description": "Peer: 10.255.0.1 (Datacenter IPsec tunnel) VRF: Guest Source: 172.18.3.2 Destination: 172.18.2.2",
-                    "result": AntaTestStatus.SUCCESS,
-                },
-            ],
-        },
-    },
-    (VerifySpecificIPSecConn, "success-without-connection"): {
+    {
+        "name": "success-without-connection",
+        "test": VerifySpecificIPSecConn,
         "eos_data": [
             {
                 "connections": {
@@ -994,22 +1033,19 @@ DATA: AntaUnitTestData = {
                 }
             }
         ],
-        "inputs": {"ip_security_connections": [{"peer": "10.255.0.1", "vrf": "default"}]},
-        "expected": {
-            "result": AntaTestStatus.SUCCESS,
-            "atomic_results": [
+        "inputs": {
+            "ip_security_connections": [
                 {
-                    "description": "Peer: 10.255.0.1 VRF: default Source: 172.18.3.2 Destination: 172.18.2.2",
-                    "result": AntaTestStatus.SUCCESS,
+                    "peer": "10.255.0.1",
+                    "vrf": "default",
                 },
-                {
-                    "description": "Peer: 10.255.0.1 VRF: default Source: 100.64.3.2 Destination: 100.64.2.2",
-                    "result": AntaTestStatus.SUCCESS,
-                },
-            ],
+            ]
         },
+        "expected": {"result": "success"},
     },
-    (VerifySpecificIPSecConn, "failure-no-connection"): {
+    {
+        "name": "failure-no-connection",
+        "test": VerifySpecificIPSecConn,
         "eos_data": [
             {"connections": {}},
             {
@@ -1031,7 +1067,10 @@ DATA: AntaUnitTestData = {
         ],
         "inputs": {
             "ip_security_connections": [
-                {"peer": "10.255.0.1", "vrf": "default"},
+                {
+                    "peer": "10.255.0.1",
+                    "vrf": "default",
+                },
                 {
                     "peer": "10.255.0.2",
                     "vrf": "DATA",
@@ -1042,23 +1081,11 @@ DATA: AntaUnitTestData = {
                 },
             ]
         },
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Peer: 10.255.0.1 VRF: default - Not configured"],
-            "atomic_results": [
-                {"description": "Peer: 10.255.0.1 VRF: default", "result": AntaTestStatus.FAILURE, "messages": ["Not configured"]},
-                {
-                    "description": "Peer: 10.255.0.2 VRF: DATA Source: 100.64.3.2 Destination: 100.64.2.2",
-                    "result": AntaTestStatus.SUCCESS,
-                },
-                {
-                    "description": "Peer: 10.255.0.2 VRF: DATA Source: 172.18.3.2 Destination: 172.18.2.2",
-                    "result": AntaTestStatus.SUCCESS,
-                },
-            ],
-        },
+        "expected": {"result": "failure", "messages": ["Peer: 10.255.0.1 VRF: default - Not configured"]},
     },
-    (VerifySpecificIPSecConn, "failure-not-established"): {
+    {
+        "name": "failure-not-established",
+        "test": VerifySpecificIPSecConn,
         "eos_data": [
             {
                 "connections": {
@@ -1074,7 +1101,7 @@ DATA: AntaUnitTestData = {
                         "daddr": "100.64.1.2",
                         "tunnelNs": "default",
                     },
-                }
+                },
             },
             {
                 "connections": {
@@ -1085,7 +1112,10 @@ DATA: AntaUnitTestData = {
         ],
         "inputs": {
             "ip_security_connections": [
-                {"peer": "10.255.0.1", "vrf": "default"},
+                {
+                    "peer": "10.255.0.1",
+                    "vrf": "default",
+                },
                 {
                     "peer": "10.255.0.2",
                     "vrf": "MGMT",
@@ -1097,38 +1127,18 @@ DATA: AntaUnitTestData = {
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
-                "Peer: 10.255.0.1 VRF: default Source: 172.18.3.2 Destination: 172.18.2.2 - Connection down - Expected: Established Actual: Idle",
-                "Peer: 10.255.0.1 VRF: default Source: 100.64.2.2 Destination: 100.64.1.2 - Connection down - Expected: Established Actual: Idle",
-                "Peer: 10.255.0.2 VRF: MGMT Source: 100.64.2.2 Destination: 100.64.1.2 - Connection down - Expected: Established Actual: Idle",
-                "Peer: 10.255.0.2 VRF: MGMT Source: 172.18.2.2 Destination: 172.18.1.2 - Connection down - Expected: Established Actual: Idle",
-            ],
-            "atomic_results": [
-                {
-                    "description": "Peer: 10.255.0.1 VRF: default Source: 172.18.3.2 Destination: 172.18.2.2",
-                    "result": AntaTestStatus.FAILURE,
-                    "messages": ["Connection down - Expected: Established Actual: Idle"],
-                },
-                {
-                    "description": "Peer: 10.255.0.1 VRF: default Source: 100.64.2.2 Destination: 100.64.1.2",
-                    "result": AntaTestStatus.FAILURE,
-                    "messages": ["Connection down - Expected: Established Actual: Idle"],
-                },
-                {
-                    "description": "Peer: 10.255.0.2 VRF: MGMT Source: 100.64.2.2 Destination: 100.64.1.2",
-                    "result": AntaTestStatus.FAILURE,
-                    "messages": ["Connection down - Expected: Established Actual: Idle"],
-                },
-                {
-                    "description": "Peer: 10.255.0.2 VRF: MGMT Source: 172.18.2.2 Destination: 172.18.1.2",
-                    "result": AntaTestStatus.FAILURE,
-                    "messages": ["Connection down - Expected: Established Actual: Idle"],
-                },
+                "Peer: 10.255.0.1 VRF: default Source: 172.18.3.2 Destination: 172.18.2.2 - Connection down - Expected: Established, Actual: Idle",
+                "Peer: 10.255.0.1 VRF: default Source: 100.64.2.2 Destination: 100.64.1.2 - Connection down - Expected: Established, Actual: Idle",
+                "Peer: 10.255.0.2 VRF: MGMT Source: 100.64.2.2 Destination: 100.64.1.2 - Connection down - Expected: Established, Actual: Idle",
+                "Peer: 10.255.0.2 VRF: MGMT Source: 172.18.2.2 Destination: 172.18.1.2 - Connection down - Expected: Established, Actual: Idle",
             ],
         },
     },
-    (VerifySpecificIPSecConn, "failure-missing-connection"): {
+    {
+        "name": "failure-missing-connection",
+        "test": VerifySpecificIPSecConn,
         "eos_data": [
             {
                 "connections": {
@@ -1144,7 +1154,7 @@ DATA: AntaUnitTestData = {
                         "daddr": "100.64.2.2",
                         "tunnelNs": "default",
                     },
-                }
+                },
             },
             {
                 "connections": {
@@ -1165,7 +1175,10 @@ DATA: AntaUnitTestData = {
         ],
         "inputs": {
             "ip_security_connections": [
-                {"peer": "10.255.0.1", "vrf": "default"},
+                {
+                    "peer": "10.255.0.1",
+                    "vrf": "default",
+                },
                 {
                     "peer": "10.255.0.2",
                     "vrf": "default",
@@ -1177,66 +1190,30 @@ DATA: AntaUnitTestData = {
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
-                "Peer: 10.255.0.1 VRF: default Source: 172.18.3.2 Destination: 172.18.2.2 - Connection down - Expected: Established Actual: Idle",
-                "Peer: 10.255.0.1 VRF: default Source: 100.64.3.2 Destination: 100.64.2.2 - Connection down - Expected: Established Actual: Idle",
-                "Peer: 10.255.0.2 VRF: default Source: 100.64.4.2 Destination: 100.64.1.2 - Connection not found",
-                "Peer: 10.255.0.2 VRF: default Source: 172.18.4.2 Destination: 172.18.1.2 - Connection not found",
-            ],
-            "atomic_results": [
-                {
-                    "description": "Peer: 10.255.0.1 VRF: default Source: 172.18.3.2 Destination: 172.18.2.2",
-                    "result": AntaTestStatus.FAILURE,
-                    "messages": ["Connection down - Expected: Established Actual: Idle"],
-                },
-                {
-                    "description": "Peer: 10.255.0.1 VRF: default Source: 100.64.3.2 Destination: 100.64.2.2",
-                    "result": AntaTestStatus.FAILURE,
-                    "messages": ["Connection down - Expected: Established Actual: Idle"],
-                },
-                {
-                    "description": "Peer: 10.255.0.2 VRF: default Source: 100.64.4.2 Destination: 100.64.1.2",
-                    "result": AntaTestStatus.FAILURE,
-                    "messages": ["Connection not found"],
-                },
-                {
-                    "description": "Peer: 10.255.0.2 VRF: default Source: 172.18.4.2 Destination: 172.18.1.2",
-                    "result": AntaTestStatus.FAILURE,
-                    "messages": ["Connection not found"],
-                },
+                "Peer: 10.255.0.1 VRF: default Source: 172.18.3.2 Destination: 172.18.2.2 - Connection down - Expected: Established, Actual: Idle",
+                "Peer: 10.255.0.1 VRF: default Source: 100.64.3.2 Destination: 100.64.2.2 - Connection down - Expected: Established, Actual: Idle",
+                "Peer: 10.255.0.2 VRF: default Source: 100.64.4.2 Destination: 100.64.1.2 - Connection not found.",
+                "Peer: 10.255.0.2 VRF: default Source: 172.18.4.2 Destination: 172.18.1.2 - Connection not found.",
             ],
         },
     },
-    (VerifySSHFIPSRestrictions, "success"): {
-        "eos_data": ["SSHD status for Default VRF is enabled\nSSH connection limit is 50\nSSH per host connection limit is 20\nFIPS status: enabled\n\n"],
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifySSHFIPSRestrictions, "failure-fips-disabled"): {
-        "eos_data": ["SSHD status for Default VRF is enabled\nSSH connection limit is 50\nSSH per host connection limit is 20\nFIPS status: disabled\n\n"],
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["FIPS restrictions not enabled in management SSH - FIPS status: disabled"],
-        },
-    },
-    (VerifySSHFIPSRestrictions, "failure-fips-line-missing"): {
-        "eos_data": ["SSHD status for Default VRF is enabled\nSSH connection limit is 50\nSSH per host connection limit is 20\n\n"],
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["FIPS status not found in 'show management ssh' output"],
-        },
-    },
-    (VerifyHardwareEntropy, "success"): {
+    {
+        "name": "success",
+        "test": VerifyHardwareEntropy,
         "eos_data": [{"cpuModel": "2.20GHz", "cryptoModule": "Crypto Module v3.0", "hardwareEntropyEnabled": True, "blockedNetworkProtocols": []}],
         "inputs": {},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyHardwareEntropy, "failure"): {
+    {
+        "name": "failure",
+        "test": VerifyHardwareEntropy,
         "eos_data": [{"cpuModel": "2.20GHz", "cryptoModule": "Crypto Module v3.0", "hardwareEntropyEnabled": False, "blockedNetworkProtocols": []}],
         "inputs": {},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Hardware entropy generation is disabled"]},
+        "expected": {"result": "failure", "messages": ["Hardware entropy generation is disabled."]},
     },
-}
+]
 
 
 class TestAPISSLCertificate:

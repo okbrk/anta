@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Configure logging for ANTA."""
@@ -151,7 +151,7 @@ def anta_log_exception(exception: BaseException, message: str | None = None, cal
     calling_logger.critical(f"{message}\n{exc_to_str(exception)}" if message else exc_to_str(exception))
     if __DEBUG__:
         msg = f"[ANTA Debug Mode]{f' {message}' if message else ''}"
-        calling_logger.error(msg, exc_info=exception)
+        calling_logger.exception(msg, exc_info=exception)
 
 
 def tb_to_str(exception: BaseException) -> str:

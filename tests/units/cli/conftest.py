@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """See https://docs.pytest.org/en/stable/reference/fixtures.html#conftest-py-sharing-fixtures-across-multiple-files."""
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import shutil
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
@@ -39,19 +39,7 @@ MOCK_CLI_JSON: dict[str, asynceapi.EapiCommandError | dict[str, Any]] = {
         errmsg="Invalid command",
         not_exec=[],
     ),
-    "show interfaces": {"interfaces": {}},
-    "ping": {  # NOTE: yeah this is the same for every one byt that's mocking.
-        "messages": [
-            (
-                "PING 10.0.0.2 (10.0.0.2) from 10.0.0.5 : 72(100) bytes of data.\n"
-                "80 bytes from 10.0.0.2: icmp_seq=1 ttl=64 time=0.247 ms\n"
-                "80 bytes from 10.0.0.2: icmp_seq=2 ttl=64 time=0.072 ms\n\n"
-                "--- 10.0.0.2 ping statistics ---\n"
-                "2 packets transmitted, 2 received, 0% packet loss, time 0ms\n"
-                "rtt min/avg/max/mdev = 0.072/0.159/0.247/0.088 ms, ipg/ewma 0.370/0.225 ms\n\n"
-            )
-        ]
-    },
+    "show interfaces": {},
 }
 
 MOCK_CLI_TEXT: dict[str, asynceapi.EapiCommandError | str] = {
@@ -101,27 +89,25 @@ def click_runner(capsys: pytest.CaptureFixture[str], anta_env: dict[str, str]) -
     def cli(
         command: str | None = None,
         commands: list[dict[str, Any]] | None = None,
-        ofmt: Literal["json", "text"] = "json",
+        ofmt: str = "json",
         _version: int | str | None = "latest",
         **_kwargs: Any,  # noqa: ANN401
     ) -> dict[str, Any] | list[dict[str, Any]]:
         def get_output(command: str | dict[str, Any]) -> dict[str, Any]:
             if isinstance(command, dict):
-                command_str: str = command["cmd"]
-            else:
-                command_str = command
+                command = command["cmd"]
             mock_cli: dict[str, Any]
             if ofmt == "json":
                 mock_cli = MOCK_CLI_JSON
             elif ofmt == "text":
                 mock_cli = MOCK_CLI_TEXT
             for mock_cmd, output in mock_cli.items():
-                if command_str == mock_cmd or (command_str.startswith("ping") and mock_cmd == "ping"):
+                if command == mock_cmd:
                     logger.info("Mocking command %s", mock_cmd)
                     if isinstance(output, asynceapi.EapiCommandError):
                         raise output
                     return output
-            message = f"Command '{command_str}' is not mocked"
+            message = f"Command '{command}' is not mocked"
             logger.critical(message)
             raise NotImplementedError(message)
 
@@ -129,18 +115,15 @@ def click_runner(capsys: pytest.CaptureFixture[str], anta_env: dict[str, str]) -
         if command is not None:
             logger.debug("Mock input %s", command)
             res = get_output(command)
-        elif commands is not None:
+        if commands is not None:
             logger.debug("Mock input %s", commands)
             res = list(map(get_output, commands))
-        else:
-            msg = "Either 'command' or 'commands' must not be None"
-            raise ValueError(msg)
         logger.debug("Mock output %s", res)
         return res
 
     # Patch asynceapi methods used by AsyncEOSDevice. See tests/units/test_device.py
     with (
-        patch("asynceapi.device.Device.check_api_endpoint", return_value=True),
+        patch("asynceapi.device.Device.check_connection", return_value=True),
         patch("asynceapi.device.Device.cli", side_effect=cli),
         patch("asyncssh.connect"),
         patch(

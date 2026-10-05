@@ -1,24 +1,22 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Module related to generic routing tests."""
 
-# Pyright does not understand AntaTest.Input typing
-# pyright: reportAttributeAccessIssue=false
+# Mypy does not understand AntaTest.Input typing
+# mypy: disable-error-code=attr-defined
 from __future__ import annotations
 
 from functools import cache
 from ipaddress import IPv4Address, IPv4Interface
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, ClassVar, Literal
 
-from pydantic import field_validator, model_validator
+from pydantic import model_validator
 
 from anta.custom_types import PositiveInteger
-from anta.decorators import deprecated_test_class
-from anta.input_models.routing.generic import IPv4RouteEntry, RoutingTableSizeVRF
+from anta.input_models.routing.generic import IPv4Routes
 from anta.models import AntaCommand, AntaTemplate, AntaTest
-from anta.result_manager.models import AntaTestStatus
-from anta.tools import get_item, get_value
+from anta.tools import get_value
 
 if TYPE_CHECKING:
     import sys
@@ -65,22 +63,16 @@ class VerifyRoutingProtocolModel(AntaTest):
         if configured_model == operating_model == self.inputs.model:
             self.result.is_success()
         else:
-            self.result.is_failure(f"Routing model is misconfigured - Expected: {self.inputs.model} Actual: {operating_model}")
+            self.result.is_failure(f"routing model is misconfigured: configured: {configured_model} - operating: {operating_model} - expected: {self.inputs.model}")
 
 
 class VerifyRoutingTableSize(AntaTest):
-    """Verifies the size of the IP routing table.
-
-    By default, verifies the total number of routes in the default VRF is between `minimum` and `maximum`.
-    Additional VRFs and specific route sources (e.g. `bgp`, `ospf`) can be provided,
-    with optional per-route source `minimum` and `maximum` overrides.
+    """Verifies the size of the IP routing table of the default VRF.
 
     Expected Results
     ----------------
-    * Success: The test will pass if the routing table size of all route sources is between the provided minimum and maximum values.
-    * Failure: The test will fail if the routing table size of a route source is not between the provided minimum and maximum values,
-    or a specified VRF is not configured on the device.
-
+    * Success: The test will pass if the routing table size is between the provided minimum and maximum values.
+    * Failure: The test will fail if the routing table size is not between the provided minimum and maximum values.
 
     Examples
     --------
@@ -90,82 +82,23 @@ class VerifyRoutingTableSize(AntaTest):
         - VerifyRoutingTableSize:
             minimum: 2
             maximum: 20
-        - VerifyRoutingTableSize:
-            minimum: 1
-            maximum: 100
-            vrfs:
-              - vrf: default
-              - vrf: MGMT
-                route_sources:
-                  - source: static
-                    maximum: 10
-              - vrf: EVPN_TENANT_A
-                route_sources:
-                  - source: bgp
-                    minimum: 200
-                    maximum: 1000
     ```
     """
 
-    _ROUTE_SOURCES: ClassVar[dict[str, str]] = {
-        "total_routes": "totalRoutes",
-        "connected": "connected",
-        "static": "static",
-        "bgp": "bgpCounts.bgpTotal",
-        "ospf": "ospfCounts.ospfTotal",
-        "ospfv3": "ospfv3Counts.ospfv3Total",
-        "isis": "isisCounts.isisTotal",
-    }
-
     categories: ClassVar[list[str]] = ["routing"]
-    commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaCommand(command="show ip route vrf all summary", revision=3)]
-    _atomic_support: ClassVar[bool] = True
+    commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaCommand(command="show ip route summary", revision=3)]
 
     class Input(AntaTest.Input):
         """Input model for the VerifyRoutingTableSize test."""
 
         minimum: PositiveInteger
-        """Expected minimum number of routes. Inherited by `vrfs` entries that do not override it."""
+        """Expected minimum routing table size."""
         maximum: PositiveInteger
-        """Expected maximum number of routes. Inherited by `vrfs` entries that do not override it."""
-        vrfs: list[RoutingTableSizeVRF] | None = None
-        """List of VRFs to verify. If not provided, total routes in VRF `default` are verified."""
-
-        @model_validator(mode="before")
-        @classmethod
-        def inject_global_bounds(cls, data: Any) -> Any:  # noqa: ANN401
-            """Inject global minimum/maximum into route sources and populate defaults for vrfs/route_sources."""
-            if not isinstance(data, dict):
-                return data
-
-            global_min = data.get("minimum")
-            global_max = data.get("maximum")
-
-            # Let Pydantic handle the missing required field error cleanly
-            if global_min is None or global_max is None:
-                return data
-
-            # Default to checking total routes in the default VRF
-            if data.get("vrfs") is None:
-                data["vrfs"] = [{"vrf": "default"}]
-
-            vrf: dict[str, Any]
-            for vrf in data["vrfs"]:
-                if not isinstance(vrf, dict):
-                    continue
-                if "route_sources" not in vrf:
-                    vrf["route_sources"] = [{"source": "total_routes"}]
-                # Inherit global bounds into route sources that don't override them
-                for route_source in vrf["route_sources"]:
-                    if isinstance(route_source, dict):
-                        route_source.setdefault("minimum", global_min)
-                        route_source.setdefault("maximum", global_max)
-
-            return data
+        """Expected maximum routing table size."""
 
         @model_validator(mode="after")
         def check_min_max(self) -> Self:
-            """Validate that global minimum is not greater than maximum."""
+            """Validate that maximum is greater than minimum."""
             if self.minimum > self.maximum:
                 msg = f"Minimum {self.minimum} is greater than maximum {self.maximum}"
                 raise ValueError(msg)
@@ -174,30 +107,16 @@ class VerifyRoutingTableSize(AntaTest):
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyRoutingTableSize."""
-        self.result.is_success()
         command_output = self.instance_commands[0].json_output
-
-        for vrf_entry in self.inputs.vrfs:
-            vrf_data = command_output["vrfs"].get(vrf_entry.vrf)
-
-            for route_source in vrf_entry.route_sources:
-                result = self.result.add(description=f"{vrf_entry} {route_source}", status=AntaTestStatus.SUCCESS)
-
-                if vrf_data is None:
-                    result.is_failure("VRF not configured")
-                    continue
-
-                actual = int(get_value(vrf_data, self._ROUTE_SOURCES[route_source.source], default=0))
-
-                if actual < route_source.minimum:
-                    result.is_failure(f"Routes below minimum - Expected: >= {route_source.minimum} Actual: {actual}")
-                if actual > route_source.maximum:
-                    result.is_failure(f"Routes above maximum - Expected: <= {route_source.maximum} Actual: {actual}")
+        total_routes = int(command_output["vrfs"]["default"]["totalRoutes"])
+        if self.inputs.minimum <= total_routes <= self.inputs.maximum:
+            self.result.is_success()
+        else:
+            self.result.is_failure(f"routing-table has {total_routes} routes and not between min ({self.inputs.minimum}) and maximum ({self.inputs.maximum})")
 
 
-@deprecated_test_class(new_tests=["VerifyIPv4RoutePresencePerPrefix", "VerifyIPv4RoutePresencePerVRF"], removal_in_version="v2.0.0")
 class VerifyRoutingTableEntry(AntaTest):
-    """(Deprecated) Verifies that the provided routes are present in the routing table of a specified VRF.
+    """Verifies that the provided routes are present in the routing table of a specified VRF.
 
     Expected Results
     ----------------
@@ -263,17 +182,16 @@ class VerifyRoutingTableEntry(AntaTest):
         if not missing_routes:
             self.result.is_success()
         else:
-            self.result.is_failure(f"The following route(s) are missing from the routing table of VRF {self.inputs.vrf}: {', '.join(missing_routes)}")
+            self.result.is_failure(f"The following route(s) are missing from the routing table of VRF {self.inputs.vrf}: {missing_routes}")
 
 
 class VerifyIPv4RouteType(AntaTest):
     """Verifies the route-type of the IPv4 prefixes.
 
     This test performs the following checks for each IPv4 route:
-
-      1. Verifies that the specified VRF is configured.
-      2. Verifies that the specified IPv4 route exists in the configuration.
-      3. Verifies that the specified IPv4 route is of the expected type.
+        1. Verifies that the specified VRF is configured.
+        2. Verifies that the specified IPv4 route is exists in the configuration.
+        3. Verifies that the the specified IPv4 route is of the expected type.
 
     Expected Results
     ----------------
@@ -311,18 +229,7 @@ class VerifyIPv4RouteType(AntaTest):
     class Input(AntaTest.Input):
         """Input model for the VerifyIPv4RouteType test."""
 
-        routes_entries: list[IPv4RouteEntry]
-        """List of IPv4 route(s)."""
-
-        @field_validator("routes_entries")
-        @classmethod
-        def validate_routes_entries(cls, routes_entries: list[IPv4RouteEntry]) -> list[IPv4RouteEntry]:
-            """Validate that 'route_type' field is provided in each BGP route entry."""
-            for entry in routes_entries:
-                if entry.route_type is None:
-                    msg = f"{entry} 'route_type' field missing in the input"
-                    raise ValueError(msg)
-            return routes_entries
+        routes_entries: list[IPv4Routes]
 
     @AntaTest.anta_test
     def test(self) -> None:
@@ -349,266 +256,3 @@ class VerifyIPv4RouteType(AntaTest):
             # Verifying that the specified IPv4 routes are of the expected type.
             if expected_route_type != (actual_route_type := route_data.get("routeType")):
                 self.result.is_failure(f"{entry} - Incorrect route type - Expected: {expected_route_type} Actual: {actual_route_type}")
-
-
-class VerifyIPv4RouteNextHops(AntaTest):
-    """Verifies the next-hops of the IPv4 prefixes.
-
-    This test performs the following checks for each IPv4 prefix:
-
-      1. Verifies the specified IPv4 route exists in the routing table.
-      2. For each specified next-hop:
-          - Verifies a path with matching next-hop exists.
-          - Supports `strict: True` to verify that routes must be learned exclusively via the exact next-hops specified.
-
-    Expected Results
-    ----------------
-    * Success: The test will pass if routes exist with paths matching the expected next-hops.
-    * Failure: The test will fail if:
-        - A route entry is not found for given IPv4 prefixes.
-        - A path with specified next-hop is not found.
-
-    Examples
-    --------
-    ```yaml
-    anta.tests.routing:
-      generic:
-        - VerifyIPv4RouteNextHops:
-            route_entries:
-                - prefix: 10.10.0.1/32
-                  vrf: default
-                  strict: false
-                  nexthops:
-                    - 10.100.0.8
-                    - 10.100.0.10
-    ```
-    """
-
-    categories: ClassVar[list[str]] = ["routing"]
-    commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaCommand(command="show ip route vrf all", revision=4)]
-
-    class Input(AntaTest.Input):
-        """Input model for the VerifyIPv4RouteNextHops test."""
-
-        route_entries: list[IPv4RouteEntry]
-        """List of IPv4 route(s)."""
-
-        @field_validator("route_entries")
-        @classmethod
-        def validate_route_entries(cls, route_entries: list[IPv4RouteEntry]) -> list[IPv4RouteEntry]:
-            """Validate that 'nexthops' field is provided in each route entry."""
-            for entry in route_entries:
-                if entry.nexthops is None:
-                    msg = f"{entry} 'nexthops' field missing in the input"
-                    raise ValueError(msg)
-            return route_entries
-
-    @AntaTest.anta_test
-    def test(self) -> None:
-        """Main test function for VerifyIPv4RouteNextHops."""
-        self.result.is_success()
-
-        output = self.instance_commands[0].json_output
-
-        for entry in self.inputs.route_entries:
-            # Verify if the prefix exists in route table
-            if (route_data := get_value(output, f"vrfs..{entry.vrf}..routes..{entry.prefix}", separator="..")) is None:
-                self.result.is_failure(f"{entry} - prefix not found")
-                continue
-
-            # Verify the nexthop addresses
-            actual_nexthops = sorted(["Directly connected" if (next_hop := route.get("nexthopAddr")) == "" else next_hop for route in route_data["vias"]])
-            expected_nexthops = sorted([str(nexthop) for nexthop in entry.nexthops])
-
-            if entry.strict and expected_nexthops != actual_nexthops:
-                exp_nexthops = ", ".join(expected_nexthops)
-                self.result.is_failure(f"{entry} - List of next-hops not matching - Expected: {exp_nexthops} Actual: {', '.join(actual_nexthops)}")
-                continue
-
-            for nexthop in entry.nexthops:
-                if not get_item(route_data["vias"], "nexthopAddr", str(nexthop)):
-                    self.result.is_failure(f"{entry} Nexthop: {nexthop} - Route not found")
-
-
-class VerifyRoutingStatus(AntaTest):
-    """Verifies the routing status for IPv4/IPv6 unicast, multicast, and IPv6 interfaces (RFC5549).
-
-    Expected Results
-    ----------------
-    * Success: The test will pass if the routing status is correct.
-    * Failure: The test will fail if the routing status doesn't match the expected configuration.
-
-    Examples
-    --------
-    ```yaml
-    anta.tests.routing:
-      generic:
-        - VerifyRoutingStatus:
-           ipv4_unicast: True
-           ipv6_unicast: True
-    ```
-    """
-
-    categories: ClassVar[list[str]] = ["routing"]
-    commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaCommand(command="show ip", revision=1)]
-
-    class Input(AntaTest.Input):
-        """Input model for the VerifyRoutingStatus test."""
-
-        ipv4_unicast: bool = False
-        """IPv4 unicast routing status."""
-        ipv6_unicast: bool = False
-        """IPv6 unicast routing status."""
-        ipv4_multicast: bool = False
-        """IPv4 multicast routing status."""
-        ipv6_multicast: bool = False
-        """IPv6 multicast routing status."""
-        ipv6_interfaces: bool = False
-        """IPv6 interface forwarding status."""
-
-    @AntaTest.anta_test
-    def test(self) -> None:
-        """Main test function for VerifyRoutingStatus."""
-        self.result.is_success()
-        command_output = self.instance_commands[0].json_output
-        actual_routing_status: dict[str, Any] = {
-            "ipv4_unicast": command_output["v4RoutingEnabled"],
-            "ipv6_unicast": command_output["v6RoutingEnabled"],
-            "ipv4_multicast": get_value(command_output, "multicastRouting.ipMulticastEnabled", default=False),
-            "ipv6_multicast": get_value(command_output, "multicastRouting.ip6MulticastEnabled", default=False),
-            "ipv6_interfaces": command_output.get("v6IntfForwarding", False),
-        }
-
-        for input_key, value in self.inputs:
-            if input_key in actual_routing_status and value != actual_routing_status[input_key]:
-                route_type = " ".join([{"ipv4": "IPv4", "ipv6": "IPv6"}.get(part, part) for part in input_key.split("_")])
-                self.result.is_failure(f"{route_type} routing enabled status mismatch - Expected: {value} Actual: {actual_routing_status[input_key]}")
-
-
-class VerifyIPv4RoutePresencePerPrefix(AntaTest):
-    """Verifies that the provided IPv4 prefixes are present in the routing table.
-
-    !!! note
-        This test performs the same verifications as `VerifyIPv4RoutePresencePerVRF` but is more efficient for devices with large routing tables.
-
-    !!! tip
-        The optimal test depends on the routing table size and number of prefixes to verify. Benchmark both to find the best fit.
-
-    Expected Results
-    ----------------
-    * Success: If all the specified IPv4 prefixes are found.
-    * Failure: If any specified IPv4 prefix is not found in the routing table.
-
-    Examples
-    --------
-    ```yaml
-    anta.tests.routing:
-      generic:
-        - VerifyIPv4RoutePresencePerPrefix:
-            route_entries:
-              - prefix: 10.10.0.1/32
-                vrf: default
-              - prefix: 10.100.0.12/31
-                vrf: MGMT
-              - prefix: 10.100.1.5/32
-                vrf: data
-    ```
-    """
-
-    categories: ClassVar[list[str]] = ["routing"]
-    commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaTemplate(template="show ip route vrf {vrf} {prefix}", revision=4)]
-    _atomic_support: ClassVar[bool] = True
-
-    class Input(AntaTest.Input):
-        """Input model for the VerifyIPv4RoutePresencePerPrefix test."""
-
-        route_entries: list[IPv4RouteEntry]
-        """List of IPv4 route entries to verify."""
-
-    def render(self, template: AntaTemplate) -> list[AntaCommand]:
-        """Render the template for each route entry in the input list."""
-        return [template.render(vrf=entry.vrf, prefix=str(entry.prefix)) for entry in self.inputs.route_entries]
-
-    @AntaTest.anta_test
-    def test(self) -> None:
-        """Main test function for VerifyIPv4RoutePresencePerPrefix."""
-        self.result.is_success()
-
-        # Iterating over the all routes entries mentioned in the inputs
-        for command, entry in zip(self.instance_commands, self.inputs.route_entries, strict=False):
-            # Atomic result
-            result = self.result.add(description=f"{entry}", status=AntaTestStatus.SUCCESS)
-
-            prefix = str(entry.prefix)
-            vrf = entry.vrf
-            routes_details = get_value(command.json_output, f"vrfs.{vrf}.routes", {})
-
-            # Verifying that the expected IPv4 prefix is present or not in the routing table
-            if prefix not in routes_details:
-                result.is_failure("Route not found")
-
-
-class VerifyIPv4RoutePresencePerVRF(AntaTest):
-    """Verifies that the provided IPv4 prefixes are present in the routing table.
-
-    !!! note
-        This test performs the same verifications as `VerifyIPv4RoutePresencePerPrefix` but is more efficient for devices with small routing tables.
-
-    !!! tip
-        The optimal test depends on the routing table size and number of prefixes to verify. Benchmark both to find the best fit.
-
-    Expected Results
-    ----------------
-    * Success: If all the specified IPv4 prefixes are found.
-    * Failure: If any specified IPv4 prefixes is not found in the routing table.
-
-    Examples
-    --------
-    ```yaml
-    anta.tests.routing:
-      generic:
-        - VerifyIPv4RoutePresencePerVRF:
-            route_entries:
-              - prefix: 10.10.0.1/32
-                vrf: default
-              - prefix: 10.100.0.12/31
-                vrf: MGMT
-              - prefix: 10.100.1.5/32
-                vrf: data
-    ```
-    """
-
-    categories: ClassVar[list[str]] = ["routing"]
-    commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaTemplate(template="show ip route vrf {vrf}", revision=4)]
-    _atomic_support: ClassVar[bool] = True
-
-    class Input(AntaTest.Input):
-        """Input model for the VerifyIPv4RoutePresencePerVRF test."""
-
-        route_entries: list[IPv4RouteEntry]
-        """List of IPv4 route entries to verify."""
-
-    def render(self, template: AntaTemplate) -> list[AntaCommand]:
-        """Render the template for each route entry in the input list."""
-        vrfs = [entry.vrf for entry in self.inputs.route_entries]
-        return [template.render(vrf=vrf) for vrf in dict.fromkeys(vrfs)]
-
-    @AntaTest.anta_test
-    def test(self) -> None:
-        """Main test function for VerifyIPv4RoutePresencePerVRF."""
-        self.result.is_success()
-        command_output = {command.params.vrf: command.json_output for command in self.instance_commands}
-
-        # Iterating over the all routes entries mentioned in the inputs
-        for entry in self.inputs.route_entries:
-            # Atomic result
-            result = self.result.add(description=f"{entry}", status=AntaTestStatus.SUCCESS)
-
-            vrf = entry.vrf
-            prefix = str(entry.prefix)
-            route_output = command_output[vrf]
-            routes_details = get_value(route_output, f"vrfs.{vrf}.routes", {})
-
-            # Verifying that the expected IPv4 prefix is present or not in the routing table
-            if prefix not in routes_details:
-                result.is_failure("Route not found")

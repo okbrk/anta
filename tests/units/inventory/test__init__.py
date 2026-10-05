@@ -1,27 +1,23 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """ANTA Inventory unit tests."""
 
 from __future__ import annotations
 
-import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
 
 import pytest
 from pydantic import ValidationError
 
-from anta.device import AntaDeviceCapabilities, AsyncEOSDevice, SSLParameters
 from anta.inventory import AntaInventory
 from anta.inventory.exceptions import InventoryIncorrectSchemaError, InventoryRootKeyError
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from _pytest.mark.structures import ParameterSet
 
-    from anta.device import AntaDevice
+FILE_DIR: Path = Path(__file__).parent.parent.resolve() / "data" / "inventory"
 
 
 INIT_VALID_PARAMS: list[ParameterSet] = [
@@ -50,16 +46,6 @@ INIT_VALID_PARAMS: list[ParameterSet] = [
             }
         },
         id="Inventory_with_ranges_tags",
-    ),
-    pytest.param(
-        {
-            "anta_inventory": {
-                "hosts": [{"host": "192.168.0.17", "use_session_auth": True}, {"host": "192.168.0.2", "use_session_auth": True}, {"host": "my.awesome.host.com"}],
-                "networks": [{"network": "192.168.0.0/24", "use_session_auth": True}],
-                "ranges": [{"start": "10.0.0.1", "end": "10.0.0.11", "use_session_auth": True}, {"start": "10.0.0.101", "end": "10.0.0.111"}],
-            }
-        },
-        id="Inventory_with_use_session_auth",
     ),
 ]
 
@@ -90,279 +76,3 @@ class TestAntaInventory:
         """Parse invalid YAML file to create ANTA inventory."""
         with pytest.raises((InventoryIncorrectSchemaError, InventoryRootKeyError, ValidationError)):
             AntaInventory.parse(filename=yaml_file, username="arista", password="arista123")
-
-    def test_parse_wrong_format(self) -> None:
-        """Use wrong file format to parse the ANTA inventory."""
-        with pytest.raises(ValueError, match=r" is not a valid format for an AntaInventory file. Only 'yaml' and 'json' are supported."):
-            AntaInventory.parse(filename="dummy.yml", username="arista", password="arista123", file_format="wrong")  # type: ignore[arg-type]
-
-    def test_parse_os_error(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Use wrong file name to parse the ANTA inventory."""
-        caplog.set_level(logging.INFO)
-        with pytest.raises(OSError, match=r"No such file or directory"):
-            _ = AntaInventory.parse(filename="dummy.yml", username="arista", password="arista123")
-        assert "Unable to parse ANTA Device Inventory file" in caplog.records[0].message
-
-    @pytest.mark.parametrize(("inventory"), [{"count": 3}], indirect=True)
-    def test_max_potential_connections(self, inventory: AntaInventory) -> None:
-        """Test max_potential_connections property with regular AsyncEOSDevice objects in the inventory."""
-        # Each AsyncEOSDevice has a max_connections of 100
-        assert inventory.max_potential_connections == 300
-
-    @pytest.mark.parametrize(("device"), [{"name": "anta_device"}], indirect=True)
-    def test_get_potential_connections_custom_anta_device(self, caplog: pytest.LogCaptureFixture, async_device: AsyncEOSDevice, device: AntaDevice) -> None:
-        """Test max_potential_connections property with an AntaDevice with no max_connections in the inventory."""
-        caplog.set_level(logging.DEBUG)
-
-        inventory = AntaInventory()
-        inventory.add_device(async_device)
-        inventory.add_device(device)
-
-        assert len(inventory) == 2
-        assert inventory.max_potential_connections is None
-        assert "Device anta_device 'max_connections' is not available" in caplog.messages
-
-    @pytest.mark.parametrize(
-        "yaml_file",
-        [
-            {
-                "anta_inventory": {
-                    "hosts": [
-                        {"host": "192.168.0.1", "use_session_auth": True},
-                        {"host": "192.168.0.2"},
-                    ]
-                }
-            }
-        ],
-        indirect=["yaml_file"],
-    )
-    def test_use_session_auth_propagates_to_asynceapi_device(self, yaml_file: Path) -> None:
-        """Verify use_session_auth=True in an inventory entry reaches the underlying asynceapi.Device."""
-        inventory = AntaInventory.parse(filename=yaml_file, username="arista", password="arista123")
-        devices_by_host = {device._client.host: device for device in inventory.values() if isinstance(device, AsyncEOSDevice)}
-
-        assert devices_by_host["192.168.0.1"]._client._use_session_auth is True
-        assert devices_by_host["192.168.0.2"]._client._use_session_auth is False
-
-    @pytest.mark.parametrize(
-        "yaml_file",
-        [
-            {
-                "anta_inventory": {
-                    "hosts": [{"host": "192.168.0.1", "ssl_params": {"ciphers": "AES256-SHA"}}],
-                    "networks": [{"network": "192.168.1.0/31", "ssl_params": {"ciphers": "AES128-SHA"}}],
-                    "ranges": [{"start": "192.168.2.1", "end": "192.168.2.2", "ssl_params": {"verify": True}}],
-                }
-            }
-        ],
-        indirect=["yaml_file"],
-    )
-    def test_ssl_parameters_propagate_and_dump(self, yaml_file: Path) -> None:
-        """Verify SSL parameters propagate from all inventory entry types and are preserved by dump()."""
-        inventory = AntaInventory.parse(filename=yaml_file, username="arista", password="arista123")
-        devices_by_host = {device._client.host: device for device in inventory.values() if isinstance(device, AsyncEOSDevice)}
-
-        assert devices_by_host["192.168.0.1"].ssl_params is not None
-        assert devices_by_host["192.168.0.1"].ssl_params.ciphers == "AES256-SHA"
-        assert devices_by_host["192.168.1.0"].ssl_params is not None
-        assert devices_by_host["192.168.1.0"].ssl_params.ciphers == "AES128-SHA"
-        assert devices_by_host["192.168.2.1"].ssl_params is not None
-        assert devices_by_host["192.168.2.1"].ssl_params.verify is True
-
-        dumped_hosts = {str(host.host): host for host in inventory.dump().hosts or []}
-        assert dumped_hosts["192.168.0.1"].ssl_params == devices_by_host["192.168.0.1"].ssl_params
-        assert dumped_hosts["192.168.1.0"].ssl_params == devices_by_host["192.168.1.0"].ssl_params
-        assert dumped_hosts["192.168.2.1"].ssl_params == devices_by_host["192.168.2.1"].ssl_params
-
-    def test_dump_omits_unconfigured_ssl_parameters(self, async_device: AsyncEOSDevice) -> None:
-        """Verify unconfigured SSL parameters do not alter serialized inventories."""
-        inventory = AntaInventory()
-        inventory.add_device(async_device)
-
-        assert "ssl_params" not in inventory.dump().to_json()
-
-    @pytest.mark.parametrize(
-        ("cli", "inventory", "expected"),
-        [
-            # CLI unset: inventory value wins, default is False
-            pytest.param(None, False, False, id="cli_unset_inventory_false__default"),
-            pytest.param(None, True, True, id="cli_unset_inventory_true__inventory"),
-            # CLI --use-session-auth: forces True regardless of inventory
-            pytest.param(True, False, True, id="cli_enable_inventory_false__cli"),
-            pytest.param(True, True, True, id="cli_enable_inventory_true__cli"),
-            # CLI --no-session-auth: forces False regardless of inventory
-            pytest.param(False, False, False, id="cli_disable_inventory_false__cli"),
-            pytest.param(False, True, False, id="cli_disable_inventory_true__cli_override"),
-        ],
-    )
-    def test_resolve_session_auth(self, cli: bool | None, inventory: bool, expected: bool) -> None:
-        """Verify _resolve_session_auth truth table with a supporting device."""
-        result = AntaInventory._resolve_session_auth("test-device", AsyncEOSDevice.capabilities, use_session_auth_override=cli, inventory_use_session_auth=inventory)
-        assert result is expected
-
-    def test_resolve_session_auth_unsupported_device_inventory_raises(self) -> None:
-        """Verify ValueError when inventory requests session auth on an unsupported device."""
-        caps = AntaDeviceCapabilities(supports_session_auth=False)
-        with pytest.raises(ValueError, match="does not support session authentication"):
-            AntaInventory._resolve_session_auth("unsupported-device", caps, use_session_auth_override=None, inventory_use_session_auth=True)
-
-    def test_resolve_session_auth_unsupported_device_cli_warns(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Verify warning (not error) when CLI requests session auth on an unsupported device."""
-        caps = AntaDeviceCapabilities(supports_session_auth=False)
-        caplog.set_level(logging.WARNING)
-        result = AntaInventory._resolve_session_auth("unsupported-device", caps, use_session_auth_override=True, inventory_use_session_auth=False)
-        assert result is False
-        assert "does not support session authentication" in caplog.text
-
-    def test_resolve_ssl_params_supported_device(self) -> None:
-        """Verify SSL parameters pass through unchanged for a supporting device."""
-        ssl_params = SSLParameters(ciphers="AES256-SHA")
-
-        result = AntaInventory._resolve_ssl_params("supported-device", AsyncEOSDevice.capabilities, ssl_params)
-
-        assert result is ssl_params
-
-    def test_resolve_ssl_params_unsupported_device_warns(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Verify unsupported SSL parameters are ignored without preventing inventory parsing."""
-        ssl_params = SSLParameters(ciphers="AES256-SHA")
-        caplog.set_level(logging.WARNING)
-
-        result = AntaInventory._resolve_ssl_params("unsupported-device", AntaDeviceCapabilities(), ssl_params)
-
-        assert result is None
-        assert "does not support SSL" in caplog.text
-
-    @pytest.mark.parametrize(
-        "yaml_file",
-        [
-            {
-                "anta_inventory": {
-                    "hosts": [
-                        {"host": "192.168.0.1", "use_session_auth": False},
-                        {"host": "192.168.0.2", "use_session_auth": False},
-                    ]
-                }
-            }
-        ],
-        indirect=["yaml_file"],
-    )
-    def test_use_session_auth_cli_overrides_inventory(self, yaml_file: Path) -> None:
-        """Verify that use_session_auth=True passed to parse() overrides per-device inventory values of False."""
-        inventory = AntaInventory.parse(filename=yaml_file, username="arista", password="arista123", use_session_auth=True)
-        devices_by_host = {device._client.host: device for device in inventory.values() if isinstance(device, AsyncEOSDevice)}
-
-        assert devices_by_host["192.168.0.1"]._client._use_session_auth is True
-        assert devices_by_host["192.168.0.2"]._client._use_session_auth is True
-
-    @pytest.mark.parametrize(
-        "yaml_file",
-        [
-            {
-                "anta_inventory": {
-                    "hosts": [
-                        {"host": "192.168.0.1", "use_session_auth": True},
-                        {"host": "192.168.0.2", "use_session_auth": True},
-                    ]
-                }
-            }
-        ],
-        indirect=["yaml_file"],
-    )
-    def test_no_session_auth_cli_overrides_inventory(self, yaml_file: Path) -> None:
-        """Verify that use_session_auth=False (--no-session-auth) disables session auth even when inventory enables it."""
-        inventory = AntaInventory.parse(filename=yaml_file, username="arista", password="arista123", use_session_auth=False)
-        devices_by_host = {device._client.host: device for device in inventory.values() if isinstance(device, AsyncEOSDevice)}
-
-        assert devices_by_host["192.168.0.1"]._client._use_session_auth is False
-        assert devices_by_host["192.168.0.2"]._client._use_session_auth is False
-
-    @pytest.mark.parametrize(
-        "yaml_file",
-        [
-            {
-                "anta_inventory": {
-                    "hosts": [
-                        {"host": "192.168.0.1", "use_session_auth": True},
-                        {"host": "192.168.0.2", "use_session_auth": False},
-                    ]
-                }
-            }
-        ],
-        indirect=["yaml_file"],
-    )
-    def test_dump_preserves_use_session_auth(self, yaml_file: Path) -> None:
-        """Verify that dump() preserves the use_session_auth value for each device."""
-        inventory = AntaInventory.parse(filename=yaml_file, username="arista", password="arista123")
-        dumped = inventory.dump()
-        hosts_by_name = {str(host.host): host for host in dumped.hosts or []}
-
-        assert hosts_by_name["192.168.0.1"].use_session_auth is True
-        assert hosts_by_name["192.168.0.2"].use_session_auth is False
-
-    @pytest.mark.parametrize(
-        "yaml_file",
-        [
-            {
-                "anta_inventory": {
-                    "networks": [
-                        {"network": "192.168.0.0/31", "use_session_auth": True},
-                        {"network": "192.168.1.0/31", "use_session_auth": False},
-                    ]
-                }
-            }
-        ],
-        indirect=["yaml_file"],
-    )
-    def test_use_session_auth_propagates_from_networks(self, yaml_file: Path) -> None:
-        """Verify use_session_auth propagates from network entries to all generated devices."""
-        inventory = AntaInventory.parse(filename=yaml_file, username="arista", password="arista123")
-        devices_by_host = {device._client.host: device for device in inventory.values() if isinstance(device, AsyncEOSDevice)}
-
-        assert devices_by_host["192.168.0.0"]._client._use_session_auth is True
-        assert devices_by_host["192.168.0.1"]._client._use_session_auth is True
-        assert devices_by_host["192.168.1.0"]._client._use_session_auth is False
-        assert devices_by_host["192.168.1.1"]._client._use_session_auth is False
-
-    @pytest.mark.parametrize(
-        "yaml_file",
-        [
-            {
-                "anta_inventory": {
-                    "ranges": [
-                        {"start": "10.0.0.1", "end": "10.0.0.2", "use_session_auth": True},
-                        {"start": "10.0.1.1", "end": "10.0.1.2", "use_session_auth": False},
-                    ]
-                }
-            }
-        ],
-        indirect=["yaml_file"],
-    )
-    def test_use_session_auth_propagates_from_ranges(self, yaml_file: Path) -> None:
-        """Verify use_session_auth propagates from range entries to all generated devices."""
-        inventory = AntaInventory.parse(filename=yaml_file, username="arista", password="arista123")
-        devices_by_host = {device._client.host: device for device in inventory.values() if isinstance(device, AsyncEOSDevice)}
-
-        assert devices_by_host["10.0.0.1"]._client._use_session_auth is True
-        assert devices_by_host["10.0.0.2"]._client._use_session_auth is True
-        assert devices_by_host["10.0.1.1"]._client._use_session_auth is False
-        assert devices_by_host["10.0.1.2"]._client._use_session_auth is False
-
-    @pytest.mark.parametrize(("device"), [{"name": "base_device"}], indirect=True)
-    async def test_disconnect_inventory_logs_exceptions(self, caplog: pytest.LogCaptureFixture, async_device: AsyncEOSDevice, device: AntaDevice) -> None:
-        """Test disconnect_inventory attempts every device and logs individual disconnect errors."""
-        caplog.set_level(logging.WARNING)
-        inventory = AntaInventory()
-        inventory.add_device(async_device)
-        inventory.add_device(device)
-
-        with (
-            patch.object(async_device, "disconnect", new=AsyncMock()) as async_device_disconnect,
-            patch.object(device, "disconnect", new=AsyncMock(side_effect=RuntimeError("boom"))) as device_disconnect,
-        ):
-            await inventory.disconnect_inventory()
-
-        async_device_disconnect.assert_awaited_once()
-        device_disconnect.assert_awaited_once()
-        assert "Error when disconnecting inventory" in caplog.text
-        assert "RuntimeError: boom" in caplog.text
-        assert all(record.levelno == logging.WARNING for record in caplog.records)

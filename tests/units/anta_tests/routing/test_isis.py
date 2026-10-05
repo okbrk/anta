@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Tests for anta.tests.routing.ospf.py."""
@@ -7,29 +7,25 @@
 
 from __future__ import annotations
 
-import sys
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import pytest
 
-from anta.models import AntaTest
-from anta.result_manager.models import AntaTestStatus
 from anta.tests.routing.isis import (
-    VerifyISISGracefulRestart,
     VerifyISISInterfaceMode,
     VerifyISISNeighborCount,
     VerifyISISNeighborState,
     VerifyISISSegmentRoutingAdjacencySegments,
     VerifyISISSegmentRoutingDataplane,
     VerifyISISSegmentRoutingTunnels,
+    _get_interface_data,
 )
 from tests.units.anta_tests import test
 
-if TYPE_CHECKING:
-    from tests.units.anta_tests import AntaUnitTestData
-
-DATA: AntaUnitTestData = {
-    (VerifyISISNeighborState, "success-default-vrf"): {
+DATA: list[dict[str, Any]] = [
+    {
+        "name": "success only default vrf",
+        "test": VerifyISISNeighborState,
         "eos_data": [
             {
                 "vrfs": {
@@ -64,33 +60,16 @@ DATA: AntaUnitTestData = {
                                 }
                             }
                         }
-                    },
-                    "customer": {
-                        "isisInstances": {
-                            "CORE-ISIS": {
-                                "neighbors": {
-                                    "0168.0000.0112": {
-                                        "adjacencies": [
-                                            {
-                                                "hostname": "s1-p02",
-                                                "circuitId": "87",
-                                                "interfaceName": "Ethernet2",
-                                                "state": "down",
-                                                "lastHelloTime": 1713688405,
-                                                "routerIdV4": "1.0.0.112",
-                                            }
-                                        ]
-                                    }
-                                }
-                            }
-                        }
-                    },
+                    }
                 }
-            }
+            },
         ],
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyISISNeighborState, "success-multiple-vrfs"): {
+    {
+        "name": "success different vrfs",
+        "test": VerifyISISNeighborState,
         "eos_data": [
             {
                 "vrfs": {
@@ -109,38 +88,40 @@ DATA: AntaUnitTestData = {
                                                 "routerIdV4": "1.0.0.111",
                                             }
                                         ]
+                                    },
+                                },
+                            },
+                        },
+                        "customer": {
+                            "isisInstances": {
+                                "CORE-ISIS": {
+                                    "neighbors": {
+                                        "0168.0000.0112": {
+                                            "adjacencies": [
+                                                {
+                                                    "hostname": "s1-p02",
+                                                    "circuitId": "87",
+                                                    "interfaceName": "Ethernet2",
+                                                    "state": "up",
+                                                    "lastHelloTime": 1713688405,
+                                                    "routerIdV4": "1.0.0.112",
+                                                }
+                                            ]
+                                        }
                                     }
                                 }
                             }
-                        }
-                    },
-                    "customer": {
-                        "isisInstances": {
-                            "CORE-ISIS": {
-                                "neighbors": {
-                                    "0168.0000.0112": {
-                                        "adjacencies": [
-                                            {
-                                                "hostname": "s1-p02",
-                                                "circuitId": "87",
-                                                "interfaceName": "Ethernet2",
-                                                "state": "up",
-                                                "lastHelloTime": 1713688405,
-                                                "routerIdV4": "1.0.0.112",
-                                            }
-                                        ]
-                                    }
-                                }
-                            }
-                        }
-                    },
+                        },
+                    }
                 }
-            }
+            },
         ],
-        "inputs": {"check_all_vrfs": True},
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "inputs": None,
+        "expected": {"result": "success"},
     },
-    (VerifyISISNeighborState, "failure"): {
+    {
+        "name": "failure",
+        "test": VerifyISISNeighborState,
         "eos_data": [
             {
                 "vrfs": {
@@ -177,76 +158,29 @@ DATA: AntaUnitTestData = {
                         }
                     }
                 }
-            }
+            },
         ],
+        "inputs": None,
         "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Instance: CORE-ISIS VRF: default Interface: Ethernet1 - Incorrect adjacency state - Expected: up Actual: down"],
+            "result": "failure",
+            "messages": ["Some neighbors are not in the correct state (UP): [{'vrf': 'default', 'instance': 'CORE-ISIS', 'neighbor': 's1-p01', 'state': 'down'}]."],
         },
     },
-    (VerifyISISNeighborState, "skipped-not-configured"): {
-        "eos_data": [{"vrfs": {}}],
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["IS-IS not configured"]},
-    },
-    (VerifyISISNeighborState, "failure-multiple-vrfs"): {
+    {
+        "name": "skipped - no neighbor",
+        "test": VerifyISISNeighborState,
         "eos_data": [
-            {
-                "vrfs": {
-                    "default": {
-                        "isisInstances": {
-                            "CORE-ISIS": {
-                                "neighbors": {
-                                    "0168.0000.0111": {
-                                        "adjacencies": [
-                                            {
-                                                "hostname": "s1-p01",
-                                                "circuitId": "83",
-                                                "interfaceName": "Ethernet1",
-                                                "state": "up",
-                                                "lastHelloTime": 1713688408,
-                                                "routerIdV4": "1.0.0.111",
-                                            }
-                                        ]
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "customer": {
-                        "isisInstances": {
-                            "CORE-ISIS": {
-                                "neighbors": {
-                                    "0168.0000.0112": {
-                                        "adjacencies": [
-                                            {
-                                                "hostname": "s1-p02",
-                                                "circuitId": "87",
-                                                "interfaceName": "Ethernet2",
-                                                "state": "down",
-                                                "lastHelloTime": 1713688405,
-                                                "routerIdV4": "1.0.0.112",
-                                            }
-                                        ]
-                                    }
-                                }
-                            }
-                        }
-                    },
-                }
-            }
+            {"vrfs": {"default": {"isisInstances": {"CORE-ISIS": {"neighbors": {}}}}}},
         ],
-        "inputs": {"check_all_vrfs": True},
+        "inputs": None,
         "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Instance: CORE-ISIS VRF: customer Interface: Ethernet2 - Incorrect adjacency state - Expected: up Actual: down"],
+            "result": "skipped",
+            "messages": ["No IS-IS neighbor detected"],
         },
     },
-    (VerifyISISNeighborState, "skipped-no-neighbor-detected"): {
-        "eos_data": [{"vrfs": {"default": {"isisInstances": {"CORE-ISIS": {"neighbors": {}}}}, "customer": {"isisInstances": {"CORE-ISIS": {"neighbors": {}}}}}}],
-        "inputs": {"check_all_vrfs": True},
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["No IS-IS neighbor detected"]},
-    },
-    (VerifyISISNeighborCount, "success-default-vrf"): {
+    {
+        "name": "success only default vrf",
+        "test": VerifyISISNeighborCount,
         "eos_data": [
             {
                 "vrfs": {
@@ -306,113 +240,35 @@ DATA: AntaUnitTestData = {
                         }
                     }
                 }
-            }
-        ],
-        "inputs": {"interfaces": [{"name": "Ethernet1", "level": 2, "count": 1}, {"name": "Ethernet2", "level": 2, "count": 1}]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyISISNeighborCount, "success-multiple-VRFs"): {
-        "eos_data": [
-            {
-                "vrfs": {
-                    "default": {
-                        "isisInstances": {
-                            "CORE-ISIS": {
-                                "interfaces": {
-                                    "Loopback0": {
-                                        "enabled": True,
-                                        "intfLevels": {
-                                            "2": {
-                                                "ipv4Metric": 10,
-                                                "sharedSecretProfile": "",
-                                                "isisAdjacencies": [],
-                                                "passive": True,
-                                                "v4Protection": "disabled",
-                                                "v6Protection": "disabled",
-                                            }
-                                        },
-                                        "areaProxyBoundary": False,
-                                    },
-                                    "Ethernet1": {
-                                        "intfLevels": {
-                                            "2": {
-                                                "ipv4Metric": 10,
-                                                "numAdjacencies": 1,
-                                                "linkId": "84",
-                                                "sharedSecretProfile": "",
-                                                "isisAdjacencies": [],
-                                                "passive": False,
-                                                "v4Protection": "link",
-                                                "v6Protection": "disabled",
-                                            }
-                                        },
-                                        "interfaceSpeed": 1000,
-                                        "areaProxyBoundary": False,
-                                    },
-                                    "Ethernet2": {
-                                        "enabled": True,
-                                        "intfLevels": {
-                                            "2": {
-                                                "ipv4Metric": 10,
-                                                "numAdjacencies": 1,
-                                                "linkId": "88",
-                                                "sharedSecretProfile": "",
-                                                "isisAdjacencies": [],
-                                                "passive": False,
-                                                "v4Protection": "link",
-                                                "v6Protection": "disabled",
-                                            }
-                                        },
-                                        "interfaceSpeed": 1000,
-                                        "areaProxyBoundary": False,
-                                    },
-                                }
-                            }
-                        }
-                    },
-                    "PROD": {
-                        "isisInstances": {
-                            "PROD-ISIS": {
-                                "interfaces": {
-                                    "Ethernet3": {
-                                        "enabled": True,
-                                        "intfLevels": {
-                                            "1": {
-                                                "ipv4Metric": 10,
-                                                "numAdjacencies": 1,
-                                                "linkId": "88",
-                                                "sharedSecretProfile": "",
-                                                "isisAdjacencies": [],
-                                                "passive": False,
-                                                "v4Protection": "link",
-                                                "v6Protection": "disabled",
-                                            }
-                                        },
-                                        "interfaceSpeed": 1000,
-                                        "areaProxyBoundary": False,
-                                    }
-                                }
-                            }
-                        }
-                    },
-                }
-            }
+            },
         ],
         "inputs": {
             "interfaces": [
                 {"name": "Ethernet1", "level": 2, "count": 1},
                 {"name": "Ethernet2", "level": 2, "count": 1},
-                {"name": "Ethernet3", "vrf": "PROD", "level": 1, "count": 1},
             ]
         },
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyISISNeighborCount, "skipped-not-configured"): {
-        "eos_data": [{"vrfs": {}}],
-        "inputs": {"interfaces": [{"name": "Ethernet1", "level": 2, "count": 1}]},
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["IS-IS not configured"]},
+    {
+        "name": "skipped - no neighbor",
+        "test": VerifyISISNeighborCount,
+        "eos_data": [
+            {"vrfs": {"default": {"isisInstances": {"CORE-ISIS": {"interfaces": {}}}}}},
+        ],
+        "inputs": {
+            "interfaces": [
+                {"name": "Ethernet1", "level": 2, "count": 1},
+            ]
+        },
+        "expected": {
+            "result": "skipped",
+            "messages": ["No IS-IS neighbor detected"],
+        },
     },
-    (VerifyISISNeighborCount, "failure-interface-not-configured"): {
+    {
+        "name": "failure - missing interface",
+        "test": VerifyISISNeighborCount,
         "eos_data": [
             {
                 "vrfs": {
@@ -435,80 +291,27 @@ DATA: AntaUnitTestData = {
                                         },
                                         "interfaceSpeed": 1000,
                                         "areaProxyBoundary": False,
-                                    }
+                                    },
                                 }
                             }
                         }
                     }
                 }
-            }
+            },
         ],
-        "inputs": {"interfaces": [{"name": "Ethernet2", "level": 2, "count": 1}]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Interface: Ethernet2 VRF: default Level: 2 - Not configured"]},
-    },
-    (VerifyISISNeighborCount, "success-interface-is-in-wrong-vrf"): {
-        "eos_data": [
-            {
-                "vrfs": {
-                    "default": {
-                        "isisInstances": {
-                            "CORE-ISIS": {
-                                "interfaces": {
-                                    "Ethernet1": {
-                                        "intfLevels": {
-                                            "2": {
-                                                "ipv4Metric": 10,
-                                                "numAdjacencies": 1,
-                                                "linkId": "84",
-                                                "sharedSecretProfile": "",
-                                                "isisAdjacencies": [],
-                                                "passive": False,
-                                                "v4Protection": "link",
-                                                "v6Protection": "disabled",
-                                            }
-                                        },
-                                        "interfaceSpeed": 1000,
-                                        "areaProxyBoundary": False,
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "PROD": {
-                        "isisInstances": {
-                            "PROD-ISIS": {
-                                "interfaces": {
-                                    "Ethernet2": {
-                                        "enabled": True,
-                                        "intfLevels": {
-                                            "1": {
-                                                "ipv4Metric": 10,
-                                                "numAdjacencies": 1,
-                                                "linkId": "88",
-                                                "sharedSecretProfile": "",
-                                                "isisAdjacencies": [],
-                                                "passive": False,
-                                                "v4Protection": "link",
-                                                "v6Protection": "disabled",
-                                            }
-                                        },
-                                        "interfaceSpeed": 1000,
-                                        "areaProxyBoundary": False,
-                                    }
-                                }
-                            }
-                        }
-                    },
-                }
-            }
-        ],
-        "inputs": {"interfaces": [{"name": "Ethernet2", "level": 2, "count": 1}, {"name": "Ethernet1", "vrf": "PROD", "level": 1, "count": 1}]},
+        "inputs": {
+            "interfaces": [
+                {"name": "Ethernet2", "level": 2, "count": 1},
+            ]
+        },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Interface: Ethernet2 VRF: default Level: 2 - Not configured", "Interface: Ethernet1 VRF: PROD Level: 1 - Not configured"],
+            "result": "failure",
+            "messages": ["No neighbor detected for interface Ethernet2"],
         },
     },
-    (VerifyISISNeighborCount, "failure-wrong-count"): {
+    {
+        "name": "failure - wrong count",
+        "test": VerifyISISNeighborCount,
         "eos_data": [
             {
                 "vrfs": {
@@ -531,18 +334,27 @@ DATA: AntaUnitTestData = {
                                         },
                                         "interfaceSpeed": 1000,
                                         "areaProxyBoundary": False,
-                                    }
+                                    },
                                 }
                             }
                         }
                     }
                 }
-            }
+            },
         ],
-        "inputs": {"interfaces": [{"name": "Ethernet1", "level": 2, "count": 1}]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Interface: Ethernet1 VRF: default Level: 2 - Neighbor count mismatch - Expected: 1 Actual: 3"]},
+        "inputs": {
+            "interfaces": [
+                {"name": "Ethernet1", "level": 2, "count": 1},
+            ]
+        },
+        "expected": {
+            "result": "failure",
+            "messages": ["Interface Ethernet1: expected Level 2: count 1, got Level 2: count 3"],
+        },
     },
-    (VerifyISISInterfaceMode, "success-default-vrf"): {
+    {
+        "name": "success VerifyISISInterfaceMode only default vrf",
+        "test": VerifyISISInterfaceMode,
         "eos_data": [
             {
                 "vrfs": {
@@ -620,118 +432,11 @@ DATA: AntaUnitTestData = {
                 {"name": "Ethernet1", "mode": "point-to-point", "vrf": "default"},
             ]
         },
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyISISInterfaceMode, "success-multiple-VRFs"): {
-        "eos_data": [
-            {
-                "vrfs": {
-                    "default": {
-                        "isisInstances": {
-                            "CORE-ISIS": {
-                                "interfaces": {
-                                    "Loopback0": {
-                                        "enabled": True,
-                                        "index": 2,
-                                        "snpa": "0:0:0:0:0:0",
-                                        "mtu": 65532,
-                                        "interfaceAddressFamily": "ipv4",
-                                        "interfaceType": "loopback",
-                                        "intfLevels": {
-                                            "2": {
-                                                "ipv4Metric": 10,
-                                                "sharedSecretProfile": "",
-                                                "isisAdjacencies": [],
-                                                "passive": True,
-                                                "v4Protection": "disabled",
-                                                "v6Protection": "disabled",
-                                            }
-                                        },
-                                        "areaProxyBoundary": False,
-                                    },
-                                    "Ethernet1": {
-                                        "enabled": True,
-                                        "index": 132,
-                                        "snpa": "P2P",
-                                        "interfaceType": "point-to-point",
-                                        "intfLevels": {
-                                            "2": {
-                                                "ipv4Metric": 10,
-                                                "numAdjacencies": 1,
-                                                "linkId": "84",
-                                                "sharedSecretProfile": "",
-                                                "isisAdjacencies": [],
-                                                "passive": False,
-                                                "v4Protection": "link",
-                                                "v6Protection": "disabled",
-                                            }
-                                        },
-                                        "interfaceSpeed": 1000,
-                                        "areaProxyBoundary": False,
-                                    },
-                                }
-                            }
-                        }
-                    },
-                    "PROD": {
-                        "isisInstances": {
-                            "PROD-ISIS": {
-                                "interfaces": {
-                                    "Ethernet4": {
-                                        "enabled": True,
-                                        "index": 132,
-                                        "snpa": "P2P",
-                                        "interfaceType": "point-to-point",
-                                        "intfLevels": {
-                                            "2": {
-                                                "ipv4Metric": 10,
-                                                "numAdjacencies": 1,
-                                                "linkId": "84",
-                                                "sharedSecretProfile": "",
-                                                "isisAdjacencies": [],
-                                                "passive": False,
-                                                "v4Protection": "link",
-                                                "v6Protection": "disabled",
-                                            }
-                                        },
-                                        "interfaceSpeed": 1000,
-                                        "areaProxyBoundary": False,
-                                    },
-                                    "Ethernet5": {
-                                        "enabled": True,
-                                        "interfaceType": "broadcast",
-                                        "intfLevels": {
-                                            "2": {
-                                                "ipv4Metric": 10,
-                                                "numAdjacencies": 0,
-                                                "sharedSecretProfile": "",
-                                                "isisAdjacencies": [],
-                                                "passive": True,
-                                                "v4Protection": "disabled",
-                                                "v6Protection": "disabled",
-                                            }
-                                        },
-                                        "interfaceSpeed": 1000,
-                                        "areaProxyBoundary": False,
-                                    },
-                                }
-                            }
-                        }
-                    },
-                }
-            }
-        ],
-        "inputs": {
-            "interfaces": [
-                {"name": "Loopback0", "mode": "passive"},
-                {"name": "Ethernet1", "mode": "point-to-point", "vrf": "default"},
-                {"name": "Ethernet4", "mode": "point-to-point", "vrf": "PROD"},
-                {"name": "Ethernet5", "mode": "passive", "vrf": "PROD"},
-            ]
-        },
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyISISInterfaceMode, "failure-interface-not-passive"): {
+    {
+        "name": "failure VerifyISISInterfaceMode default vrf with interface not running passive mode",
+        "test": VerifyISISInterfaceMode,
         "eos_data": [
             {
                 "vrfs": {
@@ -809,9 +514,14 @@ DATA: AntaUnitTestData = {
                 {"name": "Ethernet1", "mode": "point-to-point", "vrf": "default"},
             ]
         },
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Interface: Ethernet2 VRF: default Level: 2 - Not running in passive mode"]},
+        "expected": {
+            "result": "failure",
+            "messages": ["Interface Ethernet2 in VRF default is not running in passive mode"],
+        },
     },
-    (VerifyISISInterfaceMode, "failure-interface-not-point-to-point"): {
+    {
+        "name": "failure VerifyISISInterfaceMode default vrf with interface not running point-point mode",
+        "test": VerifyISISInterfaceMode,
         "eos_data": [
             {
                 "vrfs": {
@@ -890,11 +600,13 @@ DATA: AntaUnitTestData = {
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Interface: Ethernet1 VRF: default Level: 2 - Incorrect interface mode - Expected: point-to-point Actual: broadcast"],
+            "result": "failure",
+            "messages": ["Interface Ethernet1 in VRF default is not running in point-to-point reporting broadcast"],
         },
     },
-    (VerifyISISInterfaceMode, "failure-interface-wrong-vrf"): {
+    {
+        "name": "failure VerifyISISInterfaceMode default vrf with interface not running correct VRF mode",
+        "test": VerifyISISInterfaceMode,
         "eos_data": [
             {
                 "vrfs": {
@@ -973,15 +685,17 @@ DATA: AntaUnitTestData = {
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
-                "Interface: Loopback0 VRF: default Level: 2 - Not configured",
-                "Interface: Ethernet2 VRF: default Level: 2 - Not configured",
-                "Interface: Ethernet1 VRF: default Level: 2 - Not configured",
+                "Interface Loopback0 not found in VRF default",
+                "Interface Ethernet2 not found in VRF default",
+                "Interface Ethernet1 not found in VRF default",
             ],
         },
     },
-    (VerifyISISInterfaceMode, "skipped-not-configured"): {
+    {
+        "name": "skipped VerifyISISInterfaceMode no vrf",
+        "test": VerifyISISInterfaceMode,
         "eos_data": [{"vrfs": {}}],
         "inputs": {
             "interfaces": [
@@ -990,130 +704,32 @@ DATA: AntaUnitTestData = {
                 {"name": "Ethernet1", "mode": "point-to-point", "vrf": "default"},
             ]
         },
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["IS-IS not configured"]},
+        "expected": {"result": "skipped", "messages": ["IS-IS is not configured on device"]},
     },
-    (VerifyISISInterfaceMode, "failure-multiple-VRFs"): {
-        "eos_data": [
-            {
-                "vrfs": {
-                    "default": {
-                        "isisInstances": {
-                            "CORE-ISIS": {
-                                "interfaces": {
-                                    "Loopback0": {
-                                        "enabled": True,
-                                        "index": 2,
-                                        "snpa": "0:0:0:0:0:0",
-                                        "mtu": 65532,
-                                        "interfaceAddressFamily": "ipv4",
-                                        "interfaceType": "loopback",
-                                        "intfLevels": {
-                                            "2": {
-                                                "ipv4Metric": 10,
-                                                "sharedSecretProfile": "",
-                                                "isisAdjacencies": [],
-                                                "passive": True,
-                                                "v4Protection": "disabled",
-                                                "v6Protection": "disabled",
-                                            }
-                                        },
-                                        "areaProxyBoundary": False,
-                                    },
-                                    "Ethernet1": {
-                                        "enabled": True,
-                                        "index": 132,
-                                        "snpa": "P2P",
-                                        "interfaceType": "broadcast",
-                                        "intfLevels": {
-                                            "2": {
-                                                "ipv4Metric": 10,
-                                                "numAdjacencies": 1,
-                                                "linkId": "84",
-                                                "sharedSecretProfile": "",
-                                                "isisAdjacencies": [],
-                                                "passive": False,
-                                                "v4Protection": "link",
-                                                "v6Protection": "disabled",
-                                            }
-                                        },
-                                        "interfaceSpeed": 1000,
-                                        "areaProxyBoundary": False,
-                                    },
-                                }
-                            }
-                        }
-                    },
-                    "PROD": {
-                        "isisInstances": {
-                            "PROD-ISIS": {
-                                "interfaces": {
-                                    "Ethernet4": {
-                                        "enabled": True,
-                                        "index": 132,
-                                        "snpa": "P2P",
-                                        "interfaceType": "broadcast",
-                                        "intfLevels": {
-                                            "2": {
-                                                "ipv4Metric": 10,
-                                                "numAdjacencies": 1,
-                                                "linkId": "84",
-                                                "sharedSecretProfile": "",
-                                                "isisAdjacencies": [],
-                                                "passive": False,
-                                                "v4Protection": "link",
-                                                "v6Protection": "disabled",
-                                            }
-                                        },
-                                        "interfaceSpeed": 1000,
-                                        "areaProxyBoundary": False,
-                                    },
-                                    "Ethernet5": {
-                                        "enabled": True,
-                                        "interfaceType": "broadcast",
-                                        "intfLevels": {
-                                            "2": {
-                                                "ipv4Metric": 10,
-                                                "numAdjacencies": 0,
-                                                "sharedSecretProfile": "",
-                                                "isisAdjacencies": [],
-                                                "passive": False,
-                                                "v4Protection": "disabled",
-                                                "v6Protection": "disabled",
-                                            }
-                                        },
-                                        "interfaceSpeed": 1000,
-                                        "areaProxyBoundary": False,
-                                    },
-                                }
-                            }
-                        }
-                    },
-                }
-            }
-        ],
+    {
+        "name": "Skipped of VerifyISISSegmentRoutingAdjacencySegments no VRF.",
+        "test": VerifyISISSegmentRoutingAdjacencySegments,
+        "eos_data": [{"vrfs": {}}],
         "inputs": {
-            "interfaces": [
-                {"name": "Loopback0", "mode": "passive"},
-                {"name": "Ethernet1", "mode": "point-to-point", "vrf": "default"},
-                {"name": "Ethernet4", "mode": "point-to-point", "vrf": "PROD"},
-                {"name": "Ethernet5", "mode": "passive", "vrf": "PROD"},
+            "instances": [
+                {
+                    "name": "CORE-ISIS",
+                    "vrf": "default",
+                    "segments": [
+                        {
+                            "interface": "Ethernet2",
+                            "address": "10.0.1.3",
+                            "sid_origin": "dynamic",
+                        }
+                    ],
+                }
             ]
         },
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": [
-                "Interface: Ethernet1 VRF: default Level: 2 - Incorrect interface mode - Expected: point-to-point Actual: broadcast",
-                "Interface: Ethernet4 VRF: PROD Level: 2 - Incorrect interface mode - Expected: point-to-point Actual: broadcast",
-                "Interface: Ethernet5 VRF: PROD Level: 2 - Not running in passive mode",
-            ],
-        },
+        "expected": {"result": "skipped", "messages": ["IS-IS is not configured on device"]},
     },
-    (VerifyISISSegmentRoutingAdjacencySegments, "skipped-not-configured"): {
-        "eos_data": [{"vrfs": {}}],
-        "inputs": {"instances": [{"name": "CORE-ISIS", "vrf": "default", "segments": [{"interface": "Ethernet2", "address": "10.0.1.3", "sid_origin": "dynamic"}]}]},
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["IS-IS not configured"]},
-    },
-    (VerifyISISSegmentRoutingAdjacencySegments, "success"): {
+    {
+        "test": VerifyISISSegmentRoutingAdjacencySegments,
+        "name": "Success of VerifyISISSegmentRoutingAdjacencySegments in default VRF.",
         "eos_data": [
             {
                 "vrfs": {
@@ -1135,7 +751,13 @@ DATA: AntaUnitTestData = {
                                         "lan": False,
                                         "sidOrigin": "dynamic",
                                         "protection": "unprotected",
-                                        "flags": {"b": False, "v": True, "l": True, "f": False, "s": False},
+                                        "flags": {
+                                            "b": False,
+                                            "v": True,
+                                            "l": True,
+                                            "f": False,
+                                            "s": False,
+                                        },
                                         "level": 2,
                                     },
                                     {
@@ -1145,54 +767,13 @@ DATA: AntaUnitTestData = {
                                         "lan": False,
                                         "sidOrigin": "dynamic",
                                         "protection": "unprotected",
-                                        "flags": {"b": False, "v": True, "l": True, "f": False, "s": False},
-                                        "level": 2,
-                                    },
-                                ],
-                                "receivedGlobalAdjacencySegments": [],
-                                "misconfiguredAdjacencySegments": [],
-                            }
-                        }
-                    }
-                }
-            }
-        ],
-        "inputs": {"instances": [{"name": "CORE-ISIS", "vrf": "default", "segments": [{"interface": "Ethernet2", "address": "10.0.1.3", "sid_origin": "dynamic"}]}]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyISISSegmentRoutingAdjacencySegments, "failure-segment-not-found"): {
-        "eos_data": [
-            {
-                "vrfs": {
-                    "default": {
-                        "isisInstances": {
-                            "CORE-ISIS": {
-                                "dataPlane": "MPLS",
-                                "routerId": "1.0.0.11",
-                                "systemId": "0168.0000.0011",
-                                "hostname": "s1-pe01",
-                                "adjSidAllocationMode": "SrOnly",
-                                "adjSidPoolBase": 116384,
-                                "adjSidPoolSize": 16384,
-                                "adjacencySegments": [
-                                    {
-                                        "ipAddress": "10.0.1.3",
-                                        "localIntf": "Ethernet2",
-                                        "sid": 116384,
-                                        "lan": False,
-                                        "sidOrigin": "dynamic",
-                                        "protection": "unprotected",
-                                        "flags": {"b": False, "v": True, "l": True, "f": False, "s": False},
-                                        "level": 2,
-                                    },
-                                    {
-                                        "ipAddress": "10.0.1.1",
-                                        "localIntf": "Ethernet1",
-                                        "sid": 116385,
-                                        "lan": False,
-                                        "sidOrigin": "dynamic",
-                                        "protection": "unprotected",
-                                        "flags": {"b": False, "v": True, "l": True, "f": False, "s": False},
+                                        "flags": {
+                                            "b": False,
+                                            "v": True,
+                                            "l": True,
+                                            "f": False,
+                                            "s": False,
+                                        },
                                         "level": 2,
                                     },
                                 ],
@@ -1210,18 +791,23 @@ DATA: AntaUnitTestData = {
                     "name": "CORE-ISIS",
                     "vrf": "default",
                     "segments": [
-                        {"interface": "Ethernet2", "address": "10.0.1.3", "sid_origin": "dynamic"},
-                        {"interface": "Ethernet3", "address": "10.0.1.2", "sid_origin": "dynamic"},
+                        {
+                            "interface": "Ethernet2",
+                            "address": "10.0.1.3",
+                            "sid_origin": "dynamic",
+                        }
                     ],
                 }
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Instance: CORE-ISIS VRF: default Local Intf: Ethernet3 Adj IP Address: 10.0.1.2 - Adjacency segment not found"],
+            "result": "success",
+            "messages": [],
         },
     },
-    (VerifyISISSegmentRoutingAdjacencySegments, "failure-no-segments-incorrect-instance"): {
+    {
+        "test": VerifyISISSegmentRoutingAdjacencySegments,
+        "name": "Failure of VerifyISISSegmentRoutingAdjacencySegments in default VRF for incorrect segment definition.",
         "eos_data": [
             {
                 "vrfs": {
@@ -1243,7 +829,13 @@ DATA: AntaUnitTestData = {
                                         "lan": False,
                                         "sidOrigin": "dynamic",
                                         "protection": "unprotected",
-                                        "flags": {"b": False, "v": True, "l": True, "f": False, "s": False},
+                                        "flags": {
+                                            "b": False,
+                                            "v": True,
+                                            "l": True,
+                                            "f": False,
+                                            "s": False,
+                                        },
                                         "level": 2,
                                     },
                                     {
@@ -1253,7 +845,179 @@ DATA: AntaUnitTestData = {
                                         "lan": False,
                                         "sidOrigin": "dynamic",
                                         "protection": "unprotected",
-                                        "flags": {"b": False, "v": True, "l": True, "f": False, "s": False},
+                                        "flags": {
+                                            "b": False,
+                                            "v": True,
+                                            "l": True,
+                                            "f": False,
+                                            "s": False,
+                                        },
+                                        "level": 2,
+                                    },
+                                ],
+                                "receivedGlobalAdjacencySegments": [],
+                                "misconfiguredAdjacencySegments": [],
+                            }
+                        }
+                    }
+                }
+            }
+        ],
+        "inputs": {
+            "instances": [
+                {
+                    "name": "CORE-ISIS",
+                    "vrf": "default",
+                    "segments": [
+                        {
+                            "interface": "Ethernet2",
+                            "address": "10.0.1.3",
+                            "sid_origin": "dynamic",
+                        },
+                        {
+                            "interface": "Ethernet3",
+                            "address": "10.0.1.2",
+                            "sid_origin": "dynamic",
+                        },
+                    ],
+                }
+            ]
+        },
+        "expected": {
+            "result": "failure",
+            "messages": ["Your segment has not been found: interface='Ethernet3' level=2 sid_origin='dynamic' address=IPv4Address('10.0.1.2')."],
+        },
+    },
+    {
+        "test": VerifyISISSegmentRoutingAdjacencySegments,
+        "name": "Failure of VerifyISISSegmentRoutingAdjacencySegments with incorrect VRF.",
+        "eos_data": [
+            {
+                "vrfs": {
+                    "default": {
+                        "isisInstances": {
+                            "CORE-ISIS": {
+                                "dataPlane": "MPLS",
+                                "routerId": "1.0.0.11",
+                                "systemId": "0168.0000.0011",
+                                "hostname": "s1-pe01",
+                                "adjSidAllocationMode": "SrOnly",
+                                "adjSidPoolBase": 116384,
+                                "adjSidPoolSize": 16384,
+                                "adjacencySegments": [
+                                    {
+                                        "ipAddress": "10.0.1.3",
+                                        "localIntf": "Ethernet2",
+                                        "sid": 116384,
+                                        "lan": False,
+                                        "sidOrigin": "dynamic",
+                                        "protection": "unprotected",
+                                        "flags": {
+                                            "b": False,
+                                            "v": True,
+                                            "l": True,
+                                            "f": False,
+                                            "s": False,
+                                        },
+                                        "level": 2,
+                                    },
+                                    {
+                                        "ipAddress": "10.0.1.1",
+                                        "localIntf": "Ethernet1",
+                                        "sid": 116385,
+                                        "lan": False,
+                                        "sidOrigin": "dynamic",
+                                        "protection": "unprotected",
+                                        "flags": {
+                                            "b": False,
+                                            "v": True,
+                                            "l": True,
+                                            "f": False,
+                                            "s": False,
+                                        },
+                                        "level": 2,
+                                    },
+                                ],
+                                "receivedGlobalAdjacencySegments": [],
+                                "misconfiguredAdjacencySegments": [],
+                            }
+                        }
+                    }
+                }
+            }
+        ],
+        "inputs": {
+            "instances": [
+                {
+                    "name": "CORE-ISIS",
+                    "vrf": "custom",
+                    "segments": [
+                        {
+                            "interface": "Ethernet2",
+                            "address": "10.0.1.3",
+                            "sid_origin": "dynamic",
+                        },
+                        {
+                            "interface": "Ethernet3",
+                            "address": "10.0.1.2",
+                            "sid_origin": "dynamic",
+                        },
+                    ],
+                }
+            ]
+        },
+        "expected": {
+            "result": "failure",
+            "messages": ["VRF custom is not configured to run segment routging."],
+        },
+    },
+    {
+        "test": VerifyISISSegmentRoutingAdjacencySegments,
+        "name": "Failure of VerifyISISSegmentRoutingAdjacencySegments with incorrect Instance.",
+        "eos_data": [
+            {
+                "vrfs": {
+                    "default": {
+                        "isisInstances": {
+                            "CORE-ISIS": {
+                                "dataPlane": "MPLS",
+                                "routerId": "1.0.0.11",
+                                "systemId": "0168.0000.0011",
+                                "hostname": "s1-pe01",
+                                "adjSidAllocationMode": "SrOnly",
+                                "adjSidPoolBase": 116384,
+                                "adjSidPoolSize": 16384,
+                                "adjacencySegments": [
+                                    {
+                                        "ipAddress": "10.0.1.3",
+                                        "localIntf": "Ethernet2",
+                                        "sid": 116384,
+                                        "lan": False,
+                                        "sidOrigin": "dynamic",
+                                        "protection": "unprotected",
+                                        "flags": {
+                                            "b": False,
+                                            "v": True,
+                                            "l": True,
+                                            "f": False,
+                                            "s": False,
+                                        },
+                                        "level": 2,
+                                    },
+                                    {
+                                        "ipAddress": "10.0.1.1",
+                                        "localIntf": "Ethernet1",
+                                        "sid": 116385,
+                                        "lan": False,
+                                        "sidOrigin": "dynamic",
+                                        "protection": "unprotected",
+                                        "flags": {
+                                            "b": False,
+                                            "v": True,
+                                            "l": True,
+                                            "f": False,
+                                            "s": False,
+                                        },
                                         "level": 2,
                                     },
                                 ],
@@ -1271,15 +1035,28 @@ DATA: AntaUnitTestData = {
                     "name": "CORE-ISIS2",
                     "vrf": "default",
                     "segments": [
-                        {"interface": "Ethernet2", "address": "10.0.1.3", "sid_origin": "dynamic"},
-                        {"interface": "Ethernet3", "address": "10.0.1.2", "sid_origin": "dynamic"},
+                        {
+                            "interface": "Ethernet2",
+                            "address": "10.0.1.3",
+                            "sid_origin": "dynamic",
+                        },
+                        {
+                            "interface": "Ethernet3",
+                            "address": "10.0.1.2",
+                            "sid_origin": "dynamic",
+                        },
                     ],
                 }
             ]
         },
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Instance: CORE-ISIS2 VRF: default - No adjacency segments found"]},
+        "expected": {
+            "result": "failure",
+            "messages": ["Instance CORE-ISIS2 is not found in vrf default."],
+        },
     },
-    (VerifyISISSegmentRoutingAdjacencySegments, "failure-incorrect-segment-level"): {
+    {
+        "test": VerifyISISSegmentRoutingAdjacencySegments,
+        "name": "Failure of VerifyISISSegmentRoutingAdjacencySegments with incorrect segment info.",
         "eos_data": [
             {
                 "vrfs": {
@@ -1301,9 +1078,15 @@ DATA: AntaUnitTestData = {
                                         "lan": False,
                                         "sidOrigin": "dynamic",
                                         "protection": "unprotected",
-                                        "flags": {"b": False, "v": True, "l": True, "f": False, "s": False},
+                                        "flags": {
+                                            "b": False,
+                                            "v": True,
+                                            "l": True,
+                                            "f": False,
+                                            "s": False,
+                                        },
                                         "level": 2,
-                                    }
+                                    },
                                 ],
                                 "receivedGlobalAdjacencySegments": [],
                                 "misconfiguredAdjacencySegments": [],
@@ -1315,15 +1098,34 @@ DATA: AntaUnitTestData = {
         ],
         "inputs": {
             "instances": [
-                {"name": "CORE-ISIS", "vrf": "default", "segments": [{"interface": "Ethernet2", "address": "10.0.1.3", "sid_origin": "dynamic", "level": 1}]}
+                {
+                    "name": "CORE-ISIS",
+                    "vrf": "default",
+                    "segments": [
+                        {
+                            "interface": "Ethernet2",
+                            "address": "10.0.1.3",
+                            "sid_origin": "dynamic",
+                            "level": 1,  # Wrong level
+                        },
+                    ],
+                }
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Instance: CORE-ISIS VRF: default Local Intf: Ethernet2 Adj IP Address: 10.0.1.3 - Incorrect IS-IS level - Expected: 1 Actual: 2"],
+            "result": "failure",
+            "messages": [
+                (
+                    "Your segment is not correct: Expected: interface='Ethernet2' level=1 sid_origin='dynamic' address=IPv4Address('10.0.1.3') - "
+                    "Found: {'ipAddress': '10.0.1.3', 'localIntf': 'Ethernet2', 'sid': 116384, 'lan': False, 'sidOrigin': 'dynamic', 'protection': "
+                    "'unprotected', 'flags': {'b': False, 'v': True, 'l': True, 'f': False, 's': False}, 'level': 2}."
+                )
+            ],
         },
     },
-    (VerifyISISSegmentRoutingAdjacencySegments, "failure-incorrect-sid-origin"): {
+    {
+        "test": VerifyISISSegmentRoutingDataplane,
+        "name": "Check VerifyISISSegmentRoutingDataplane is running successfully",
         "eos_data": [
             {
                 "vrfs": {
@@ -1334,23 +1136,6 @@ DATA: AntaUnitTestData = {
                                 "routerId": "1.0.0.11",
                                 "systemId": "0168.0000.0011",
                                 "hostname": "s1-pe01",
-                                "adjSidAllocationMode": "SrOnly",
-                                "adjSidPoolBase": 116384,
-                                "adjSidPoolSize": 16384,
-                                "adjacencySegments": [
-                                    {
-                                        "ipAddress": "10.0.1.3",
-                                        "localIntf": "Ethernet2",
-                                        "sid": 116384,
-                                        "lan": False,
-                                        "sidOrigin": "configured",
-                                        "protection": "unprotected",
-                                        "flags": {"b": False, "v": True, "l": True, "f": False, "s": False},
-                                        "level": 2,
-                                    }
-                                ],
-                                "receivedGlobalAdjacencySegments": [],
-                                "misconfiguredAdjacencySegments": [],
                             }
                         }
                     }
@@ -1359,412 +1144,775 @@ DATA: AntaUnitTestData = {
         ],
         "inputs": {
             "instances": [
-                {"name": "CORE-ISIS", "vrf": "default", "segments": [{"interface": "Ethernet2", "address": "10.0.1.3", "sid_origin": "dynamic", "level": 2}]}
-            ]
-        },
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": [
-                "Instance: CORE-ISIS VRF: default Local Intf: Ethernet2 Adj IP Address: 10.0.1.3 - Incorrect SID origin - Expected: dynamic Actual: configured"
-            ],
-        },
-    },
-    (VerifyISISSegmentRoutingDataplane, "success"): {
-        "eos_data": [
-            {
-                "vrfs": {
-                    "default": {"isisInstances": {"CORE-ISIS": {"dataPlane": "MPLS", "routerId": "1.0.0.11", "systemId": "0168.0000.0011", "hostname": "s1-pe01"}}}
-                }
-            }
-        ],
-        "inputs": {"instances": [{"name": "CORE-ISIS", "vrf": "default", "dataplane": "MPLS"}]},
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyISISSegmentRoutingDataplane, "failure-incorrect-dataplane"): {
-        "eos_data": [
-            {
-                "vrfs": {
-                    "default": {"isisInstances": {"CORE-ISIS": {"dataPlane": "MPLS", "routerId": "1.0.0.11", "systemId": "0168.0000.0011", "hostname": "s1-pe01"}}}
-                }
-            }
-        ],
-        "inputs": {"instances": [{"name": "CORE-ISIS", "vrf": "default", "dataplane": "unset"}]},
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Instance: CORE-ISIS VRF: default - Data-plane not correctly configured - Expected: UNSET Actual: MPLS"],
-        },
-    },
-    (VerifyISISSegmentRoutingDataplane, "failure-instance-not-configured"): {
-        "eos_data": [
-            {
-                "vrfs": {
-                    "default": {"isisInstances": {"CORE-ISIS": {"dataPlane": "MPLS", "routerId": "1.0.0.11", "systemId": "0168.0000.0011", "hostname": "s1-pe01"}}}
-                }
-            }
-        ],
-        "inputs": {"instances": [{"name": "CORE-ISIS2", "vrf": "default", "dataplane": "unset"}]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Instance: CORE-ISIS2 VRF: default - Not configured"]},
-    },
-    (VerifyISISSegmentRoutingDataplane, "skipped-not-configured"): {
-        "eos_data": [{"vrfs": {}}],
-        "inputs": {"instances": [{"name": "CORE-ISIS", "vrf": "default", "dataplane": "unset"}]},
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["IS-IS not configured"]},
-    },
-    (VerifyISISSegmentRoutingTunnels, "runs successfully"): {
-        "eos_data": [
-            {
-                "entries": {
-                    "3": {
-                        "endpoint": "1.0.0.122/32",
-                        "vias": [
-                            {"type": "ip", "nexthop": "10.0.1.1", "interface": "Ethernet1", "labels": ["900021"]},
-                            {"type": "ip", "nexthop": "10.0.1.3", "interface": "Ethernet2", "labels": ["900021"]},
-                        ],
-                    },
-                    "31": {
-                        "endpoint": "1.0.0.13/32",
-                        "vias": [
-                            {"type": "ip", "nexthop": "10.0.1.1", "interface": "Ethernet1", "labels": ["900021"]},
-                            {"type": "ip", "nexthop": "10.0.1.3", "interface": "Ethernet2", "labels": ["900021"]},
-                        ],
-                    },
-                    "32": {
-                        "endpoint": "1.0.0.122/32",
-                        "vias": [
-                            {"type": "ip", "nexthop": "10.0.1.1", "interface": "Ethernet1", "labels": ["900021"]},
-                            {"type": "ip", "nexthop": "10.0.1.3", "interface": "Ethernet2", "labels": ["900021"]},
-                        ],
-                    },
-                    "2": {"endpoint": "1.0.0.111/32", "vias": [{"type": "tunnel", "tunnelId": {"type": "TI-LFA", "index": 4}, "labels": ["3"]}]},
-                }
-            }
-        ],
-        "inputs": {
-            "entries": [
-                {"endpoint": "1.0.0.122/32"},
-                {"endpoint": "1.0.0.13/32", "vias": [{"type": "ip"}]},
-                {"endpoint": "1.0.0.111/32", "vias": [{"type": "tunnel", "tunnel_id": "ti-lfa"}]},
                 {
-                    "endpoint": "1.0.0.122/32",
-                    "vias": [{"interface": "Ethernet1", "nexthop": "10.0.1.1"}, {"type": "ip", "interface": "Ethernet2", "nexthop": "10.0.1.3"}],
-                },
-            ]
-        },
-        "expected": {"result": AntaTestStatus.SUCCESS},
-    },
-    (VerifyISISSegmentRoutingTunnels, "is skipped if not entry founf in EOS"): {
-        "eos_data": [{"entries": {}}],
-        "inputs": {"entries": [{"endpoint": "1.0.0.122/32"}]},
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["IS-IS-SR not configured"]},
-    },
-    (VerifyISISSegmentRoutingTunnels, "runs successfully only endpoint"): {
-        "eos_data": [{"entries": {"2": {"endpoint": "1.0.0.111/32", "vias": [{"type": "tunnel", "tunnelId": {"type": "TI-LFA", "index": 4}, "labels": ["3"]}]}}}],
-        "inputs": {"entries": [{"endpoint": "1.0.0.122/32"}]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Endpoint: 1.0.0.122/32 - Tunnel not found"]},
-    },
-    (VerifyISISSegmentRoutingTunnels, "fails with incorrect tunnel type"): {
-        "eos_data": [
-            {
-                "entries": {
-                    "3": {
-                        "endpoint": "1.0.0.122/32",
-                        "vias": [
-                            {"type": "ip", "nexthop": "10.0.1.1", "interface": "Ethernet1", "labels": ["900021"]},
-                            {"type": "ip", "nexthop": "10.0.1.3", "interface": "Ethernet2", "labels": ["900021"]},
-                        ],
-                    },
-                    "31": {
-                        "endpoint": "1.0.0.13/32",
-                        "vias": [
-                            {"type": "ip", "nexthop": "10.0.1.1", "interface": "Ethernet1", "labels": ["900021"]},
-                            {"type": "ip", "nexthop": "10.0.1.3", "interface": "Ethernet2", "labels": ["900021"]},
-                        ],
-                    },
-                    "32": {
-                        "endpoint": "1.0.0.122/32",
-                        "vias": [
-                            {"type": "ip", "nexthop": "10.0.1.1", "interface": "Ethernet1", "labels": ["900021"]},
-                            {"type": "ip", "nexthop": "10.0.1.3", "interface": "Ethernet2", "labels": ["900021"]},
-                        ],
-                    },
-                    "2": {"endpoint": "1.0.0.111/32", "vias": [{"type": "tunnel", "tunnelId": {"type": "TI-LFA", "index": 4}, "labels": ["3"]}]},
-                }
-            }
-        ],
-        "inputs": {"entries": [{"endpoint": "1.0.0.122/32"}, {"endpoint": "1.0.0.13/32", "vias": [{"type": "tunnel"}]}]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Endpoint: 1.0.0.13/32 Type: tunnel - Tunnel is incorrect"]},
-    },
-    (VerifyISISSegmentRoutingTunnels, "fails with incorrect nexthop interface"): {
-        "eos_data": [
-            {
-                "entries": {
-                    "3": {
-                        "endpoint": "1.0.0.122/32",
-                        "vias": [
-                            {"type": "ip", "nexthop": "10.0.1.1", "interface": "Ethernet1", "labels": ["900021"]},
-                            {"type": "ip", "nexthop": "10.0.1.3", "interface": "Ethernet2", "labels": ["900021"]},
-                        ],
-                    },
-                    "31": {
-                        "endpoint": "1.0.0.13/32",
-                        "vias": [
-                            {"type": "ip", "nexthop": "10.0.1.1", "interface": "Ethernet1", "labels": ["900021"]},
-                            {"type": "ip", "nexthop": "10.0.1.3", "interface": "Ethernet2", "labels": ["900021"]},
-                        ],
-                    },
-                    "32": {
-                        "endpoint": "1.0.0.122/32",
-                        "vias": [
-                            {"type": "ip", "nexthop": "10.0.1.1", "interface": "Ethernet1", "labels": ["900021"]},
-                            {"type": "ip", "nexthop": "10.0.1.3", "interface": "Ethernet2", "labels": ["900021"]},
-                        ],
-                    },
-                    "2": {"endpoint": "1.0.0.111/32", "vias": [{"type": "tunnel", "tunnelId": {"type": "TI-LFA", "index": 4}, "labels": ["3"]}]},
-                }
-            }
-        ],
-        "inputs": {
-            "entries": [
-                {"endpoint": "1.0.0.122/32"},
-                {"endpoint": "1.0.0.13/32", "vias": [{"type": "ip"}]},
-                {
-                    "endpoint": "1.0.0.122/32",
-                    "vias": [{"type": "ip", "interface": "Ethernet1", "nexthop": "10.0.1.2"}, {"type": "ip", "interface": "Ethernet2", "nexthop": "10.0.1.3"}],
+                    "name": "CORE-ISIS",
+                    "vrf": "default",
+                    "dataplane": "MPLS",
                 },
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Endpoint: 1.0.0.122/32 Next-hop: 10.0.1.2 Type: ip Interface: Ethernet1 - Tunnel is incorrect"],
+            "result": "success",
+            "messages": [],
         },
     },
-    (VerifyISISSegmentRoutingTunnels, "fails with incorrect nexthop"): {
-        "eos_data": [
-            {
-                "entries": {
-                    "3": {
-                        "endpoint": "1.0.0.122/32",
-                        "vias": [
-                            {"type": "ip", "nexthop": "10.0.1.1", "interface": "Ethernet1", "labels": ["900021"]},
-                            {"type": "ip", "nexthop": "10.0.1.3", "interface": "Ethernet2", "labels": ["900021"]},
-                        ],
-                    },
-                    "31": {
-                        "endpoint": "1.0.0.13/32",
-                        "vias": [
-                            {"type": "ip", "nexthop": "10.0.1.1", "interface": "Ethernet1", "labels": ["900021"]},
-                            {"type": "ip", "nexthop": "10.0.1.3", "interface": "Ethernet2", "labels": ["900021"]},
-                        ],
-                    },
-                    "32": {
-                        "endpoint": "1.0.0.122/32",
-                        "vias": [
-                            {"type": "ip", "nexthop": "10.0.1.1", "interface": "Ethernet1", "labels": ["900021"]},
-                            {"type": "ip", "nexthop": "10.0.1.3", "interface": "Ethernet2", "labels": ["900021"]},
-                        ],
-                    },
-                    "2": {"endpoint": "1.0.0.111/32", "vias": [{"type": "tunnel", "tunnelId": {"type": "TI-LFA", "index": 4}, "labels": ["3"]}]},
-                }
-            }
-        ],
-        "inputs": {
-            "entries": [
-                {"endpoint": "1.0.0.122/32"},
-                {"endpoint": "1.0.0.13/32", "vias": [{"type": "ip"}]},
-                {
-                    "endpoint": "1.0.0.122/32",
-                    "vias": [{"type": "ip", "interface": "Ethernet4", "nexthop": "10.0.1.1"}, {"type": "ip", "interface": "Ethernet2", "nexthop": "10.0.1.3"}],
-                },
-            ]
-        },
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Endpoint: 1.0.0.122/32 Next-hop: 10.0.1.1 Type: ip Interface: Ethernet4 - Tunnel is incorrect"],
-        },
-    },
-    (VerifyISISSegmentRoutingTunnels, "fails with incorrect interface"): {
-        "eos_data": [
-            {
-                "entries": {
-                    "3": {
-                        "endpoint": "1.0.0.122/32",
-                        "vias": [
-                            {"type": "ip", "nexthop": "10.0.1.1", "interface": "Ethernet1", "labels": ["900021"]},
-                            {"type": "ip", "nexthop": "10.0.1.3", "interface": "Ethernet2", "labels": ["900021"]},
-                        ],
-                    },
-                    "31": {
-                        "endpoint": "1.0.0.13/32",
-                        "vias": [
-                            {"type": "ip", "nexthop": "10.0.1.1", "interface": "Ethernet1", "labels": ["900021"]},
-                            {"type": "ip", "nexthop": "10.0.1.3", "interface": "Ethernet2", "labels": ["900021"]},
-                        ],
-                    },
-                    "32": {
-                        "endpoint": "1.0.0.122/32",
-                        "vias": [
-                            {"type": "ip", "nexthop": "10.0.1.1", "interface": "Ethernet1", "labels": ["900021"]},
-                            {"type": "ip", "nexthop": "10.0.1.3", "interface": "Ethernet2", "labels": ["900021"]},
-                        ],
-                    },
-                    "2": {"endpoint": "1.0.0.111/32", "vias": [{"type": "tunnel", "tunnelId": {"type": "TI-LFA", "index": 4}, "labels": ["3"]}]},
-                }
-            }
-        ],
-        "inputs": {
-            "entries": [
-                {"endpoint": "1.0.0.122/32"},
-                {"endpoint": "1.0.0.13/32", "vias": [{"type": "ip"}]},
-                {
-                    "endpoint": "1.0.0.122/32",
-                    "vias": [{"type": "ip", "interface": "Ethernet1", "nexthop": "10.0.1.2"}, {"type": "ip", "interface": "Ethernet2", "nexthop": "10.0.1.3"}],
-                },
-            ]
-        },
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Endpoint: 1.0.0.122/32 Next-hop: 10.0.1.2 Type: ip Interface: Ethernet1 - Tunnel is incorrect"],
-        },
-    },
-    (VerifyISISSegmentRoutingTunnels, "fails with incorrect tunnel ID type"): {
-        "eos_data": [
-            {
-                "entries": {
-                    "3": {
-                        "endpoint": "1.0.0.122/32",
-                        "vias": [
-                            {"type": "ip", "nexthop": "10.0.1.1", "interface": "Ethernet1", "labels": ["900021"]},
-                            {"type": "ip", "nexthop": "10.0.1.3", "interface": "Ethernet2", "labels": ["900021"]},
-                        ],
-                    },
-                    "31": {
-                        "endpoint": "1.0.0.13/32",
-                        "vias": [
-                            {"type": "ip", "nexthop": "10.0.1.1", "interface": "Ethernet1", "labels": ["900021"]},
-                            {"type": "ip", "nexthop": "10.0.1.3", "interface": "Ethernet2", "labels": ["900021"]},
-                        ],
-                    },
-                    "32": {
-                        "endpoint": "1.0.0.122/32",
-                        "vias": [
-                            {"type": "ip", "nexthop": "10.0.1.1", "interface": "Ethernet1", "labels": ["900021"]},
-                            {"type": "ip", "nexthop": "10.0.1.3", "interface": "Ethernet2", "labels": ["900021"]},
-                        ],
-                    },
-                    "2": {"endpoint": "1.0.0.111/32", "vias": [{"type": "tunnel", "tunnelId": {"type": "unset", "index": 4}, "labels": ["3"]}]},
-                }
-            }
-        ],
-        "inputs": {
-            "entries": [
-                {"endpoint": "1.0.0.122/32"},
-                {"endpoint": "1.0.0.13/32", "vias": [{"type": "ip"}]},
-                {"endpoint": "1.0.0.111/32", "vias": [{"type": "tunnel", "tunnel_id": "ti-lfa"}]},
-            ]
-        },
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Endpoint: 1.0.0.111/32 Type: tunnel Tunnel ID: ti-lfa - Tunnel is incorrect"]},
-    },
-    (VerifyISISSegmentRoutingTunnels, "skipped with ISIS-SR not running"): {
-        "eos_data": [{"entries": {}}],
-        "inputs": {
-            "entries": [
-                {"endpoint": "1.0.0.122/32"},
-                {"endpoint": "1.0.0.13/32", "vias": [{"type": "ip"}]},
-                {"endpoint": "1.0.0.111/32", "vias": [{"type": "tunnel", "tunnel_id": "unset"}]},
-            ]
-        },
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["IS-IS-SR not configured"]},
-    },
-    (VerifyISISGracefulRestart, "success"): {
+    {
+        "test": VerifyISISSegmentRoutingDataplane,
+        "name": "Check VerifyISISSegmentRoutingDataplane is failing with incorrect dataplane",
         "eos_data": [
             {
                 "vrfs": {
                     "default": {
                         "isisInstances": {
-                            "1": {"gracefulRestart": "enabled", "gracefulRestartHelper": "enabled"},
-                            "2": {"gracefulRestart": "enabled", "gracefulRestartHelper": "disabled"},
+                            "CORE-ISIS": {
+                                "dataPlane": "MPLS",
+                                "routerId": "1.0.0.11",
+                                "systemId": "0168.0000.0011",
+                                "hostname": "s1-pe01",
+                            }
                         }
-                    },
-                    "test": {
-                        "isisInstances": {
-                            "11": {"gracefulRestart": "disabled", "gracefulRestartHelper": "enabled"},
-                            "12": {"gracefulRestart": "enabled", "gracefulRestartHelper": "disabled"},
-                        }
-                    },
+                    }
                 }
             }
         ],
         "inputs": {
             "instances": [
-                {"vrf": "default", "name": "1", "graceful_restart": True},
-                {"vrf": "default", "name": "2", "graceful_restart": True, "graceful_restart_helper": False},
-                {"vrf": "test", "name": "11"},
-                {"vrf": "test", "name": "12", "graceful_restart": True, "graceful_restart_helper": False},
+                {
+                    "name": "CORE-ISIS",
+                    "vrf": "default",
+                    "dataplane": "unset",
+                },
             ]
         },
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {
+            "result": "failure",
+            "messages": ["ISIS instance CORE-ISIS is not running dataplane unset (MPLS)"],
+        },
     },
-    (VerifyISISGracefulRestart, "failure-isis-not-configured"): {
-        "eos_data": [{"vrfs": {}}],
-        "inputs": {"instances": [{"vrf": "default", "name": "1", "graceful_restart": True}]},
-        "expected": {"result": AntaTestStatus.SKIPPED, "messages": ["IS-IS not configured"]},
-    },
-    (VerifyISISGracefulRestart, "failure-isis-instance-not-found"): {
-        "eos_data": [{"vrfs": {"default": {"isisInstances": {"2": {"gracefulRestart": "enabled", "gracefulRestartHelper": "enabled"}}}}}],
-        "inputs": {"instances": [{"vrf": "default", "name": "1", "graceful_restart": True}]},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["Instance: 1 VRF: default - Not configured"]},
-    },
-    (VerifyISISGracefulRestart, "failure-graceful-restart-disabled"): {
+    {
+        "test": VerifyISISSegmentRoutingDataplane,
+        "name": "Check VerifyISISSegmentRoutingDataplane is failing for unknown instance",
         "eos_data": [
             {
                 "vrfs": {
                     "default": {
                         "isisInstances": {
-                            "1": {"gracefulRestart": "disabled", "gracefulRestartHelper": "enabled"},
-                            "2": {"gracefulRestart": "enabled", "gracefulRestartHelper": "enabled"},
+                            "CORE-ISIS": {
+                                "dataPlane": "MPLS",
+                                "routerId": "1.0.0.11",
+                                "systemId": "0168.0000.0011",
+                                "hostname": "s1-pe01",
+                            }
                         }
-                    },
-                    "test": {
-                        "isisInstances": {
-                            "11": {"gracefulRestart": "enabled", "gracefulRestartHelper": "enabled"},
-                            "12": {"gracefulRestart": "enabled", "gracefulRestartHelper": "disabled"},
-                        }
-                    },
+                    }
                 }
             }
         ],
         "inputs": {
             "instances": [
-                {"vrf": "default", "name": "1", "graceful_restart": True},
-                {"vrf": "default", "name": "2", "graceful_restart": True},
-                {"vrf": "test", "name": "11"},
-                {"vrf": "test", "name": "12", "graceful_restart": True, "graceful_restart_helper": False},
+                {
+                    "name": "CORE-ISIS2",
+                    "vrf": "default",
+                    "dataplane": "unset",
+                },
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": [
-                "Instance: 1 VRF: default - Incorrect graceful restart state - Expected: enabled Actual: disabled",
-                "Instance: 11 VRF: test - Incorrect graceful restart state - Expected: disabled Actual: enabled",
-            ],
+            "result": "failure",
+            "messages": ["Instance CORE-ISIS2 is not found in vrf default."],
         },
     },
-    (VerifyISISGracefulRestart, "failure-graceful-restart-helper-disabled"): {
+    {
+        "test": VerifyISISSegmentRoutingDataplane,
+        "name": "Check VerifyISISSegmentRoutingDataplane is failing for unknown VRF",
         "eos_data": [
             {
                 "vrfs": {
-                    "default": {"isisInstances": {"1": {"gracefulRestart": "disabled", "gracefulRestartHelper": "disabled"}}},
-                    "test": {"isisInstances": {"11": {"gracefulRestart": "disabled", "gracefulRestartHelper": "enabled"}}},
+                    "default": {
+                        "isisInstances": {
+                            "CORE-ISIS": {
+                                "dataPlane": "MPLS",
+                                "routerId": "1.0.0.11",
+                                "systemId": "0168.0000.0011",
+                                "hostname": "s1-pe01",
+                            }
+                        }
+                    }
                 }
             }
         ],
-        "inputs": {"instances": [{"vrf": "default", "name": "1"}, {"vrf": "test", "name": "11", "graceful_restart_helper": False}]},
+        "inputs": {
+            "instances": [
+                {
+                    "name": "CORE-ISIS",
+                    "vrf": "wrong_vrf",
+                    "dataplane": "unset",
+                },
+            ]
+        },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": [
-                "Instance: 1 VRF: default - Incorrect graceful restart helper state - Expected: enabled Actual: disabled",
-                "Instance: 11 VRF: test - Incorrect graceful restart helper state - Expected: disabled Actual: enabled",
-            ],
+            "result": "failure",
+            "messages": ["VRF wrong_vrf is not configured to run segment routing."],
         },
     },
+    {
+        "test": VerifyISISSegmentRoutingDataplane,
+        "name": "Check VerifyISISSegmentRoutingDataplane is skipped",
+        "eos_data": [{"vrfs": {}}],
+        "inputs": {
+            "instances": [
+                {
+                    "name": "CORE-ISIS",
+                    "vrf": "wrong_vrf",
+                    "dataplane": "unset",
+                },
+            ]
+        },
+        "expected": {
+            "result": "skipped",
+            "messages": ["IS-IS-SR is not running on device"],
+        },
+    },
+    {
+        "test": VerifyISISSegmentRoutingTunnels,
+        "name": "runs successfully",
+        "eos_data": [
+            {
+                "entries": {
+                    "3": {
+                        "endpoint": "1.0.0.122/32",
+                        "vias": [
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.1",
+                                "interface": "Ethernet1",
+                                "labels": ["900021"],
+                            },
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.3",
+                                "interface": "Ethernet2",
+                                "labels": ["900021"],
+                            },
+                        ],
+                    },
+                    "31": {
+                        "endpoint": "1.0.0.13/32",
+                        "vias": [
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.1",
+                                "interface": "Ethernet1",
+                                "labels": ["900021"],
+                            },
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.3",
+                                "interface": "Ethernet2",
+                                "labels": ["900021"],
+                            },
+                        ],
+                    },
+                    "32": {
+                        "endpoint": "1.0.0.122/32",
+                        "vias": [
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.1",
+                                "interface": "Ethernet1",
+                                "labels": ["900021"],
+                            },
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.3",
+                                "interface": "Ethernet2",
+                                "labels": ["900021"],
+                            },
+                        ],
+                    },
+                    "2": {
+                        "endpoint": "1.0.0.111/32",
+                        "vias": [
+                            {
+                                "type": "tunnel",
+                                "tunnelId": {"type": "TI-LFA", "index": 4},
+                                "labels": ["3"],
+                            }
+                        ],
+                    },
+                }
+            }
+        ],
+        "inputs": {
+            "entries": [
+                {"endpoint": "1.0.0.122/32"},
+                {"endpoint": "1.0.0.13/32", "vias": [{"type": "ip"}]},
+                {
+                    "endpoint": "1.0.0.111/32",
+                    "vias": [{"type": "tunnel", "tunnel_id": "ti-lfa"}],
+                },
+                {
+                    "endpoint": "1.0.0.122/32",
+                    "vias": [
+                        {"interface": "Ethernet1", "nexthop": "10.0.1.1"},  # Testing empty type
+                        {"type": "ip", "interface": "Ethernet2", "nexthop": "10.0.1.3"},
+                    ],
+                },
+            ]
+        },
+        "expected": {
+            "result": "success",
+            "messages": [],
+        },
+    },
+    {
+        "test": VerifyISISSegmentRoutingTunnels,
+        "name": "is skipped if not entry founf in EOS",
+        "eos_data": [{"entries": {}}],
+        "inputs": {
+            "entries": [
+                {"endpoint": "1.0.0.122/32"},
+            ]
+        },
+        "expected": {
+            "result": "skipped",
+            "messages": ["IS-IS-SR is not running on device."],
+        },
+    },
+    {
+        "test": VerifyISISSegmentRoutingTunnels,
+        "name": "runs successfully",
+        "eos_data": [
+            {
+                "entries": {
+                    "2": {
+                        "endpoint": "1.0.0.111/32",
+                        "vias": [
+                            {
+                                "type": "tunnel",
+                                "tunnelId": {"type": "TI-LFA", "index": 4},
+                                "labels": ["3"],
+                            }
+                        ],
+                    },
+                }
+            }
+        ],
+        "inputs": {
+            "entries": [
+                {"endpoint": "1.0.0.122/32"},
+            ]
+        },
+        "expected": {
+            "result": "failure",
+            "messages": ["Tunnel to endpoint=IPv4Network('1.0.0.122/32') vias=None is not found."],
+        },
+    },
+    {
+        "test": VerifyISISSegmentRoutingTunnels,
+        "name": "fails with incorrect tunnel type",
+        "eos_data": [
+            {
+                "entries": {
+                    "3": {
+                        "endpoint": "1.0.0.122/32",
+                        "vias": [
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.1",
+                                "interface": "Ethernet1",
+                                "labels": ["900021"],
+                            },
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.3",
+                                "interface": "Ethernet2",
+                                "labels": ["900021"],
+                            },
+                        ],
+                    },
+                    "31": {
+                        "endpoint": "1.0.0.13/32",
+                        "vias": [
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.1",
+                                "interface": "Ethernet1",
+                                "labels": ["900021"],
+                            },
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.3",
+                                "interface": "Ethernet2",
+                                "labels": ["900021"],
+                            },
+                        ],
+                    },
+                    "32": {
+                        "endpoint": "1.0.0.122/32",
+                        "vias": [
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.1",
+                                "interface": "Ethernet1",
+                                "labels": ["900021"],
+                            },
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.3",
+                                "interface": "Ethernet2",
+                                "labels": ["900021"],
+                            },
+                        ],
+                    },
+                    "2": {
+                        "endpoint": "1.0.0.111/32",
+                        "vias": [
+                            {
+                                "type": "tunnel",
+                                "tunnelId": {"type": "TI-LFA", "index": 4},
+                                "labels": ["3"],
+                            }
+                        ],
+                    },
+                }
+            }
+        ],
+        "inputs": {
+            "entries": [
+                {"endpoint": "1.0.0.122/32"},
+                {"endpoint": "1.0.0.13/32", "vias": [{"type": "tunnel"}]},
+            ]
+        },
+        "expected": {
+            "result": "failure",
+            "messages": ["Tunnel to 1.0.0.13/32 is incorrect: incorrect tunnel type"],
+        },
+    },
+    {
+        "test": VerifyISISSegmentRoutingTunnels,
+        "name": "fails with incorrect nexthop",
+        "eos_data": [
+            {
+                "entries": {
+                    "3": {
+                        "endpoint": "1.0.0.122/32",
+                        "vias": [
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.1",
+                                "interface": "Ethernet1",
+                                "labels": ["900021"],
+                            },
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.3",
+                                "interface": "Ethernet2",
+                                "labels": ["900021"],
+                            },
+                        ],
+                    },
+                    "31": {
+                        "endpoint": "1.0.0.13/32",
+                        "vias": [
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.1",
+                                "interface": "Ethernet1",
+                                "labels": ["900021"],
+                            },
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.3",
+                                "interface": "Ethernet2",
+                                "labels": ["900021"],
+                            },
+                        ],
+                    },
+                    "32": {
+                        "endpoint": "1.0.0.122/32",
+                        "vias": [
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.1",
+                                "interface": "Ethernet1",
+                                "labels": ["900021"],
+                            },
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.3",
+                                "interface": "Ethernet2",
+                                "labels": ["900021"],
+                            },
+                        ],
+                    },
+                    "2": {
+                        "endpoint": "1.0.0.111/32",
+                        "vias": [
+                            {
+                                "type": "tunnel",
+                                "tunnelId": {"type": "TI-LFA", "index": 4},
+                                "labels": ["3"],
+                            }
+                        ],
+                    },
+                }
+            }
+        ],
+        "inputs": {
+            "entries": [
+                {"endpoint": "1.0.0.122/32"},
+                {"endpoint": "1.0.0.13/32", "vias": [{"type": "ip"}]},
+                {
+                    "endpoint": "1.0.0.122/32",
+                    "vias": [
+                        {"type": "ip", "interface": "Ethernet1", "nexthop": "10.0.1.2"},
+                        {"type": "ip", "interface": "Ethernet2", "nexthop": "10.0.1.3"},
+                    ],
+                },
+            ]
+        },
+        "expected": {
+            "result": "failure",
+            "messages": ["Tunnel to 1.0.0.122/32 is incorrect: incorrect nexthop"],
+        },
+    },
+    {
+        "test": VerifyISISSegmentRoutingTunnels,
+        "name": "fails with incorrect nexthop",
+        "eos_data": [
+            {
+                "entries": {
+                    "3": {
+                        "endpoint": "1.0.0.122/32",
+                        "vias": [
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.1",
+                                "interface": "Ethernet1",
+                                "labels": ["900021"],
+                            },
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.3",
+                                "interface": "Ethernet2",
+                                "labels": ["900021"],
+                            },
+                        ],
+                    },
+                    "31": {
+                        "endpoint": "1.0.0.13/32",
+                        "vias": [
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.1",
+                                "interface": "Ethernet1",
+                                "labels": ["900021"],
+                            },
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.3",
+                                "interface": "Ethernet2",
+                                "labels": ["900021"],
+                            },
+                        ],
+                    },
+                    "32": {
+                        "endpoint": "1.0.0.122/32",
+                        "vias": [
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.1",
+                                "interface": "Ethernet1",
+                                "labels": ["900021"],
+                            },
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.3",
+                                "interface": "Ethernet2",
+                                "labels": ["900021"],
+                            },
+                        ],
+                    },
+                    "2": {
+                        "endpoint": "1.0.0.111/32",
+                        "vias": [
+                            {
+                                "type": "tunnel",
+                                "tunnelId": {"type": "TI-LFA", "index": 4},
+                                "labels": ["3"],
+                            }
+                        ],
+                    },
+                }
+            }
+        ],
+        "inputs": {
+            "entries": [
+                {"endpoint": "1.0.0.122/32"},
+                {"endpoint": "1.0.0.13/32", "vias": [{"type": "ip"}]},
+                {
+                    "endpoint": "1.0.0.122/32",
+                    "vias": [
+                        {"type": "ip", "interface": "Ethernet4", "nexthop": "10.0.1.1"},
+                        {"type": "ip", "interface": "Ethernet2", "nexthop": "10.0.1.3"},
+                    ],
+                },
+            ]
+        },
+        "expected": {
+            "result": "failure",
+            "messages": ["Tunnel to 1.0.0.122/32 is incorrect: incorrect interface"],
+        },
+    },
+    {
+        "test": VerifyISISSegmentRoutingTunnels,
+        "name": "fails with incorrect interface",
+        "eos_data": [
+            {
+                "entries": {
+                    "3": {
+                        "endpoint": "1.0.0.122/32",
+                        "vias": [
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.1",
+                                "interface": "Ethernet1",
+                                "labels": ["900021"],
+                            },
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.3",
+                                "interface": "Ethernet2",
+                                "labels": ["900021"],
+                            },
+                        ],
+                    },
+                    "31": {
+                        "endpoint": "1.0.0.13/32",
+                        "vias": [
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.1",
+                                "interface": "Ethernet1",
+                                "labels": ["900021"],
+                            },
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.3",
+                                "interface": "Ethernet2",
+                                "labels": ["900021"],
+                            },
+                        ],
+                    },
+                    "32": {
+                        "endpoint": "1.0.0.122/32",
+                        "vias": [
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.1",
+                                "interface": "Ethernet1",
+                                "labels": ["900021"],
+                            },
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.3",
+                                "interface": "Ethernet2",
+                                "labels": ["900021"],
+                            },
+                        ],
+                    },
+                    "2": {
+                        "endpoint": "1.0.0.111/32",
+                        "vias": [
+                            {
+                                "type": "tunnel",
+                                "tunnelId": {"type": "TI-LFA", "index": 4},
+                                "labels": ["3"],
+                            }
+                        ],
+                    },
+                }
+            }
+        ],
+        "inputs": {
+            "entries": [
+                {"endpoint": "1.0.0.122/32"},
+                {"endpoint": "1.0.0.13/32", "vias": [{"type": "ip"}]},
+                {
+                    "endpoint": "1.0.0.122/32",
+                    "vias": [
+                        {"type": "ip", "interface": "Ethernet1", "nexthop": "10.0.1.2"},
+                        {"type": "ip", "interface": "Ethernet2", "nexthop": "10.0.1.3"},
+                    ],
+                },
+            ]
+        },
+        "expected": {
+            "result": "failure",
+            "messages": ["Tunnel to 1.0.0.122/32 is incorrect: incorrect nexthop"],
+        },
+    },
+    {
+        "test": VerifyISISSegmentRoutingTunnels,
+        "name": "fails with incorrect tunnel ID type",
+        "eos_data": [
+            {
+                "entries": {
+                    "3": {
+                        "endpoint": "1.0.0.122/32",
+                        "vias": [
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.1",
+                                "interface": "Ethernet1",
+                                "labels": ["900021"],
+                            },
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.3",
+                                "interface": "Ethernet2",
+                                "labels": ["900021"],
+                            },
+                        ],
+                    },
+                    "31": {
+                        "endpoint": "1.0.0.13/32",
+                        "vias": [
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.1",
+                                "interface": "Ethernet1",
+                                "labels": ["900021"],
+                            },
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.3",
+                                "interface": "Ethernet2",
+                                "labels": ["900021"],
+                            },
+                        ],
+                    },
+                    "32": {
+                        "endpoint": "1.0.0.122/32",
+                        "vias": [
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.1",
+                                "interface": "Ethernet1",
+                                "labels": ["900021"],
+                            },
+                            {
+                                "type": "ip",
+                                "nexthop": "10.0.1.3",
+                                "interface": "Ethernet2",
+                                "labels": ["900021"],
+                            },
+                        ],
+                    },
+                    "2": {
+                        "endpoint": "1.0.0.111/32",
+                        "vias": [
+                            {
+                                "type": "tunnel",
+                                "tunnelId": {"type": "TI-LFA", "index": 4},
+                                "labels": ["3"],
+                            }
+                        ],
+                    },
+                }
+            }
+        ],
+        "inputs": {
+            "entries": [
+                {"endpoint": "1.0.0.122/32"},
+                {"endpoint": "1.0.0.13/32", "vias": [{"type": "ip"}]},
+                {
+                    "endpoint": "1.0.0.111/32",
+                    "vias": [
+                        {"type": "tunnel", "tunnel_id": "unset"},
+                    ],
+                },
+            ]
+        },
+        "expected": {
+            "result": "failure",
+            "messages": ["Tunnel to 1.0.0.111/32 is incorrect: incorrect tunnel ID"],
+        },
+    },
+]
+
+
+COMMAND_OUTPUT = {
+    "vrfs": {
+        "default": {
+            "isisInstances": {
+                "CORE-ISIS": {
+                    "interfaces": {
+                        "Loopback0": {
+                            "enabled": True,
+                            "intfLevels": {
+                                "2": {
+                                    "ipv4Metric": 10,
+                                    "sharedSecretProfile": "",
+                                    "isisAdjacencies": [],
+                                    "passive": True,
+                                    "v4Protection": "disabled",
+                                    "v6Protection": "disabled",
+                                }
+                            },
+                            "areaProxyBoundary": False,
+                        },
+                        "Ethernet1": {
+                            "intfLevels": {
+                                "2": {
+                                    "ipv4Metric": 10,
+                                    "numAdjacencies": 1,
+                                    "linkId": "84",
+                                    "sharedSecretProfile": "",
+                                    "isisAdjacencies": [],
+                                    "passive": False,
+                                    "v4Protection": "link",
+                                    "v6Protection": "disabled",
+                                }
+                            },
+                            "interfaceSpeed": 1000,
+                            "areaProxyBoundary": False,
+                        },
+                    }
+                }
+            }
+        },
+        "EMPTY": {"isisInstances": {}},
+        "NO_INTERFACES": {"isisInstances": {"CORE-ISIS": {}}},
+    }
 }
+EXPECTED_LOOPBACK_0_OUTPUT = {
+    "enabled": True,
+    "intfLevels": {
+        "2": {
+            "ipv4Metric": 10,
+            "sharedSecretProfile": "",
+            "isisAdjacencies": [],
+            "passive": True,
+            "v4Protection": "disabled",
+            "v6Protection": "disabled",
+        }
+    },
+    "areaProxyBoundary": False,
+}
+
+
+@pytest.mark.parametrize(
+    ("interface", "vrf", "expected_value"),
+    [
+        pytest.param("Loopback0", "WRONG_VRF", None, id="VRF_not_found"),
+        pytest.param("Loopback0", "EMPTY", None, id="VRF_no_ISIS_instances"),
+        pytest.param("Loopback0", "NO_INTERFACES", None, id="ISIS_instance_no_interfaces"),
+        pytest.param("Loopback42", "default", None, id="interface_not_found"),
+        pytest.param("Loopback0", "default", EXPECTED_LOOPBACK_0_OUTPUT, id="interface_found"),
+    ],
+)
+def test__get_interface_data(interface: str, vrf: str, expected_value: dict[str, Any] | None) -> None:
+    """Test anta.tests.routing.isis._get_interface_data."""
+    assert _get_interface_data(interface, vrf, COMMAND_OUTPUT) == expected_value

@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Models related to inventory management."""
@@ -9,27 +9,14 @@ import logging
 import math
 
 import yaml
-from pydantic import BaseModel, ConfigDict, FieldSerializationInfo, IPvAnyAddress, IPvAnyNetwork, field_serializer
+from pydantic import BaseModel, ConfigDict, IPvAnyAddress, IPvAnyNetwork
 
 from anta.custom_types import Hostname, Port
-from anta.device import SSLParameters
 
 logger = logging.getLogger(__name__)
 
 
-class AntaInventoryBaseModel(BaseModel):
-    """Pydantic BaseModel for AntaInventory objects."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    # Using check_fields as we plan to use this in the child classes
-    @field_serializer("tags", when_used="json", check_fields=False)
-    def serialize_tags(self, tags: set[str], _info: FieldSerializationInfo) -> list[str]:
-        """Make sure the tags are always dumped in the same order."""
-        return sorted(tags)
-
-
-class AntaInventoryHost(AntaInventoryBaseModel):
+class AntaInventoryHost(BaseModel):
     """Host entry of AntaInventoryInput.
 
     Attributes
@@ -44,23 +31,19 @@ class AntaInventoryHost(AntaInventoryBaseModel):
         Tags of the device.
     disable_cache : bool
         Disable cache for this device.
-    use_session_auth : bool
-        Use session based authentication for this device if supported.
-    ssl_params : SSLParameters | None
-        SSL parameters for this device.
 
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     name: str | None = None
     host: Hostname | IPvAnyAddress
     port: Port | None = None
     tags: set[str] | None = None
     disable_cache: bool = False
-    use_session_auth: bool = False
-    ssl_params: SSLParameters | None = None
 
 
-class AntaInventoryNetwork(AntaInventoryBaseModel):
+class AntaInventoryNetwork(BaseModel):
     """Network entry of AntaInventoryInput.
 
     Attributes
@@ -71,21 +54,17 @@ class AntaInventoryNetwork(AntaInventoryBaseModel):
         Tags of the devices in this network.
     disable_cache : bool
         Disable cache for all devices in this network.
-    use_session_auth : bool
-        Use session based authentication for all devices if supported in this network.
-    ssl_params : SSLParameters | None
-        SSL parameters for all devices in this network.
 
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     network: IPvAnyNetwork
     tags: set[str] | None = None
     disable_cache: bool = False
-    use_session_auth: bool = False
-    ssl_params: SSLParameters | None = None
 
 
-class AntaInventoryRange(AntaInventoryBaseModel):
+class AntaInventoryRange(BaseModel):
     """IP Range entry of AntaInventoryInput.
 
     Attributes
@@ -98,19 +77,15 @@ class AntaInventoryRange(AntaInventoryBaseModel):
         Tags of the devices in this IP range.
     disable_cache : bool
         Disable cache for all devices in this IP range.
-    use_session_auth : bool
-        Use session based authentication for all devices if supported in this IP range.
-    ssl_params : SSLParameters | None
-        SSL parameters for all devices in this IP range.
 
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     start: IPvAnyAddress
     end: IPvAnyAddress
     tags: set[str] | None = None
     disable_cache: bool = False
-    use_session_auth: bool = False
-    ssl_params: SSLParameters | None = None
 
 
 class AntaInventoryInput(BaseModel):
@@ -134,13 +109,4 @@ class AntaInventoryInput(BaseModel):
         # This could be improved.
         # https://github.com/pydantic/pydantic/issues/1043
         # Explore if this worth using this: https://github.com/NowanIlfideme/pydantic-yaml
-        return yaml.safe_dump(yaml.safe_load(self.model_dump_json(serialize_as_any=True, exclude_unset=True)), width=math.inf)
-
-    def to_json(self) -> str:
-        """Return a JSON representation string of this model.
-
-        Returns
-        -------
-            The JSON representation string of this model.
-        """
-        return self.model_dump_json(exclude_unset=True, indent=2)
+        return yaml.safe_dump(yaml.safe_load(self.model_dump_json(serialize_as_any=True, exclude_unset=True)), indent=2, width=math.inf)

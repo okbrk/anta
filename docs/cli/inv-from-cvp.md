@@ -1,14 +1,8 @@
 ---
-title: Create an Inventory from CloudVision
-hide:
-  - tags
-tags:
-  - CLI
-  - Inventory
+anta_title: Create an Inventory from CloudVision
 ---
-
 <!--
-  ~ Copyright (c) 2023-2026 Arista Networks, Inc.
+  ~ Copyright (c) 2023-2025 Arista Networks, Inc.
   ~ Use of this source code is governed by the Apache License 2.0
   ~ that can be found in the LICENSE file.
   -->
@@ -21,7 +15,26 @@ In large setups, it might be beneficial to construct your inventory based on Clo
 ## Command overview
 
 ```bash
---8<-- "anta_get_fromcvp_help.txt"
+Usage: anta get from-cvp [OPTIONS]
+
+  Build ANTA inventory from CloudVision.
+
+  NOTE: Only username/password authentication is supported for on-premises CloudVision instances.
+  Token authentication for both on-premises and CloudVision as a Service (CVaaS) is not supported.
+
+Options:
+  -o, --output FILE     Path to save inventory file  [env var: ANTA_INVENTORY;
+                        required]
+  --overwrite           Do not prompt when overriding current inventory  [env
+                        var: ANTA_GET_FROM_CVP_OVERWRITE]
+  -host, --host TEXT    CloudVision instance FQDN or IP  [required]
+  -u, --username TEXT   CloudVision username  [required]
+  -p, --password TEXT   CloudVision password  [required]
+  -c, --container TEXT  CloudVision container where devices are configured
+  --ignore-cert         By default connection to CV will use HTTPS
+                        certificate, set this flag to disable it  [env var:
+                        ANTA_GET_FROM_CVP_IGNORE_CERT]
+  --help                Show this message and exit.
 ```
 
 The output is an inventory where the name of the container is added as a tag for each host:
@@ -39,8 +52,8 @@ anta_inventory:
     - pod2
 ```
 
-!!! warning
-    The current implementation only considers devices directly attached to a specific container when using the `--cvp-container` option.
+> [!WARNING]
+> The current implementation only considers devices directly attached to a specific container when using the `--cvp-container` option.
 
 ## Creating an inventory from multiple containers
 

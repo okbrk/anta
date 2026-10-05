@@ -1,10 +1,10 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Module related to ASIC profile tests."""
 
-# Pyright does not understand AntaTest.Input typing
-# pyright: reportAttributeAccessIssue=false
+# Mypy does not understand AntaTest.Input typing
+# mypy: disable-error-code=attr-defined
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar, Literal
@@ -43,7 +43,7 @@ class VerifyUnifiedForwardingTableMode(AntaTest):
         mode: Literal[0, 1, 2, 3, 4, "flexible"]
         """Expected UFT mode. Valid values are 0, 1, 2, 3, 4, or "flexible"."""
 
-    @skip_on_platforms(["cEOSLab", "vEOS-lab", "cEOSCloudLab", "vEOS"])
+    @skip_on_platforms(["cEOSLab", "vEOS-lab", "cEOSCloudLab"])
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyUnifiedForwardingTableMode."""
@@ -51,14 +51,11 @@ class VerifyUnifiedForwardingTableMode(AntaTest):
         if command_output["uftMode"] == str(self.inputs.mode):
             self.result.is_success()
         else:
-            self.result.is_failure(f"Not running the correct UFT mode - Expected: {self.inputs.mode} Actual: {command_output['uftMode']}")
+            self.result.is_failure(f"Not running the correct UFT mode - Expected: {self.inputs.mode}, Actual: {command_output['uftMode']}")
 
 
 class VerifyTcamProfile(AntaTest):
     """Verifies that the device is using the provided Ternary Content-Addressable Memory (TCAM) profile.
-
-    !!! note
-      For modular switches, the provided TCAM profile is checked against all linecards.
 
     Expected Results
     ----------------
@@ -84,17 +81,12 @@ class VerifyTcamProfile(AntaTest):
         profile: str
         """Expected TCAM profile."""
 
-    @skip_on_platforms(["cEOSLab", "vEOS-lab", "cEOSCloudLab", "vEOS"])
+    @skip_on_platforms(["cEOSLab", "vEOS-lab", "cEOSCloudLab"])
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyTcamProfile."""
         command_output = self.instance_commands[0].json_output
-        self.result.is_success()
-
-        if not (pm_profiles := command_output["pmfProfiles"]):
-            self.result.is_failure("No TCAM profile found")
-            return
-
-        for profile, details in pm_profiles.items():
-            if not details["status"] == details["config"] == self.inputs.profile:
-                self.result.is_failure(f"{profile} - Incorrect profile running on device - Expected: {self.inputs.profile} Actual: {details['status']}")
+        if command_output["pmfProfiles"]["FixedSystem"]["status"] == command_output["pmfProfiles"]["FixedSystem"]["config"] == self.inputs.profile:
+            self.result.is_success()
+        else:
+            self.result.is_failure(f"Incorrect profile running on device: {command_output['pmfProfiles']['FixedSystem']['status']}")

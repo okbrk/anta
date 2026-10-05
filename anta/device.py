@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """ANTA Device Abstraction Module."""
@@ -7,159 +7,30 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import ssl
 from abc import ABC, abstractmethod
 from collections import OrderedDict, defaultdict
-from collections.abc import Mapping
-from dataclasses import dataclass
 from time import monotonic
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal
 
 import asyncssh
 import httpcore
 from asyncssh import SSHClientConnection, SSHClientConnectionOptions
-from httpx import ConnectError, HTTPError, TimeoutException, create_ssl_context
+from httpx import ConnectError, HTTPError, TimeoutException
 
 import asynceapi
 from anta import __DEBUG__
-from anta._eos.parsing import ParseFail, ParseFailureReason
-from anta._eos.platform import PlatformIdentity, PlatformType, parse_eos_platform, parse_eos_platform_modules
-from anta._eos.version import parse_eos_version
 from anta.logger import anta_log_exception, exc_to_str
 from anta.models import AntaCommand
-from anta.settings import get_httpx_settings, get_ssl_settings
-from asynceapi._models import EAPIClientConnectionOptions
-from asynceapi._types import EapiComplexCommand
-from asynceapi.errors import EapiAuthenticationError
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
-
-    from asynceapi._types import EapiSimpleCommand
 
 logger = logging.getLogger(__name__)
 
 # Do not load the default keypairs multiple times due to a performance issue introduced in cryptography 37.0
 # https://github.com/pyca/cryptography/issues/7236#issuecomment-1131908472
 CLIENT_KEYS = asyncssh.public_key.load_default_keypairs()
-
-# Limit concurrency to 100 requests (HTTPX default) to avoid high-concurrency performance issues
-# See: https://github.com/encode/httpx/issues/3215
-MAX_CONCURRENT_REQUESTS = 100
-
-
-def _log_platform_parse_failure(failure: ParseFail, device_name: str, *, module_inventory: bool = False) -> None:
-    """Log why EOS platform metadata could not be parsed.
-
-    Parameters
-    ----------
-    failure : ParseFail
-        Typed failure returned by platform collection or parsing.
-    device_name : str
-        ANTA device name used in the log message.
-    module_inventory : bool
-        Whether the failure concerns optional module inventory.
-    """
-    message = "Cannot parse EOS module inventory" if module_inventory else "Cannot parse EOS platform identity"
-    log = logger.warning if module_inventory else logger.critical
-    log("%s for device %s: %s (%s)", message, device_name, failure.reason.value, failure.detail)
-
-
-class DeviceVersion(Protocol):
-    """Contract implemented by software version representations attached to an AntaDevice."""
-
-    def __str__(self) -> str:
-        """Return the normalized software version string."""
-        raise NotImplementedError
-
-    def to_dict(self) -> dict[str, str | int]:
-        """Return the version components as a JSON-compatible dictionary."""
-        raise NotImplementedError
-
-
-class DevicePlatform(Protocol):
-    """Contract implemented by platform representations attached to an AntaDevice."""
-
-    def __str__(self) -> str:
-        """Return the normalized platform model string."""
-        raise NotImplementedError
-
-    def to_dict(self) -> dict[str, object]:
-        """Return platform identity as a JSON-compatible dictionary."""
-        raise NotImplementedError
-
-
-@dataclass(frozen=True, slots=True)
-class AntaDeviceCapabilities:
-    """Declares the optional features a device implementation supports.
-
-    Subclasses of AntaDevice set this as a ClassVar to advertise which
-    ANTA capabilities they implement. The base default is all-False.
-
-    Attributes
-    ----------
-    supports_session_auth : bool
-        Whether the device supports eAPI cookie-session authentication.
-    supports_ssl : bool
-        Whether the device accepts SSL parameters from an ANTA inventory.
-    """
-
-    supports_session_auth: bool = False
-    supports_ssl: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class SSLParameters:
-    """Parameters used to build an SSL context for an HTTPS eAPI connection.
-
-    Attributes
-    ----------
-    ciphers : str | None
-        OpenSSL cipher list. None uses the Python defaults.
-    verify : bool
-        Whether to verify the peer certificate. Defaults to False.
-    check_hostname : bool
-        Whether to verify that the certificate matches the device hostname. Defaults to False and requires ``verify=True``.
-    """
-
-    ciphers: str | None = None
-    verify: bool = False
-    check_hostname: bool = False
-
-    def __post_init__(self) -> None:
-        """Validate the SSL parameter combination."""
-        if self.check_hostname and not self.verify:
-            msg = "SSL hostname checking requires certificate verification"
-            raise ValueError(msg)
-
-    def create_ssl_context(self, *, trust_env: bool = True) -> ssl.SSLContext:
-        """Build an HTTPX-compatible SSL context from these parameters.
-
-        Parameters
-        ----------
-        trust_env
-            Use the SSL certificate environment variables supported by HTTPX.
-
-        Returns
-        -------
-        ssl.SSLContext
-            Configured SSL context.
-
-        Raises
-        ------
-        ValueError
-            If the cipher list is invalid or selects no supported cipher.
-        """
-        context = create_ssl_context(verify=self.verify, trust_env=trust_env)
-        context.check_hostname = self.check_hostname
-        if self.ciphers is not None:
-            try:
-                context.set_ciphers(self.ciphers)
-            except ssl.SSLError as exc:
-                msg = f"Invalid SSL cipher list: {self.ciphers!r}"
-                raise ValueError(msg) from exc
-        return context
 
 
 class AntaCache:
@@ -237,27 +108,17 @@ class AntaDevice(ABC):
         True if the device IP is reachable and a port can be open.
     established : bool
         True if remote command execution succeeds.
-    hw_model : str | None
+    hw_model : str
         Hardware model of the device.
-    version : DeviceVersion | None
-        Software version of the device, if available.
     tags : set[str]
         Tags for this device.
     cache : AntaCache | None
         In-memory cache for this device (None if cache is disabled).
-    cache_locks : defaultdict[str, asyncio.Lock] | None
+    cache_locks : dict
         Dictionary mapping keys to asyncio locks to guarantee exclusive access to the cache if not disabled.
         Deprecated, will be removed in ANTA v2.0.0, use self.cache.locks instead.
-    max_connections : int | None
-        For informational/logging purposes only. Can be used by the runner to verify that
-        the total potential connections of a run do not exceed the system file descriptor limit.
-        This does **not** affect the actual device configuration. None if not available.
-    capabilities : AntaDeviceCapabilities
-        Class-level declaration of which optional features this device type supports.
-        Subclasses override this to advertise their capabilities.
-    """
 
-    capabilities: ClassVar[AntaDeviceCapabilities] = AntaDeviceCapabilities()
+    """
 
     def __init__(self, name: str, tags: set[str] | None = None, *, disable_cache: bool = False) -> None:
         """Initialize an AntaDevice.
@@ -274,9 +135,7 @@ class AntaDevice(ABC):
         """
         self.name: str = name
         self.hw_model: str | None = None
-        self.platform: DevicePlatform | None = None
-        self._version: DeviceVersion | None = None
-        self.tags: set[str] = tags.copy() if tags is not None else set()
+        self.tags: set[str] = tags if tags is not None else set()
         # A device always has its own name as tag
         self.tags.add(self.name)
         self.is_online: bool = False
@@ -293,21 +152,6 @@ class AntaDevice(ABC):
     @abstractmethod
     def _keys(self) -> tuple[Any, ...]:
         """Read-only property to implement hashing and equality for AntaDevice classes."""
-
-    @property
-    def version(self) -> DeviceVersion | None:
-        """Software version of the device, if available."""
-        return self._version
-
-    @version.setter
-    def version(self, value: DeviceVersion | None) -> None:
-        """Set the software version of the device."""
-        self._version = value
-
-    @property
-    def max_connections(self) -> int | None:
-        """Maximum number of concurrent connections allowed by the device. Can be overridden by subclasses, returns None if not available."""
-        return None
 
     def __eq__(self, other: object) -> bool:
         """Implement equality for AntaDevice objects."""
@@ -339,19 +183,16 @@ class AntaDevice(ABC):
         yield "name", self.name
         yield "tags", self.tags
         yield "hw_model", self.hw_model
-        yield "version", str(self.version) if self.version is not None else None
         yield "is_online", self.is_online
         yield "established", self.established
         yield "disable_cache", self.cache is None
 
     def __repr__(self) -> str:
         """Return a printable representation of an AntaDevice."""
-        version = repr(str(self.version)) if self.version is not None else "None"
         return (
             f"AntaDevice({self.name!r}, "
             f"tags={self.tags!r}, "
             f"hw_model={self.hw_model!r}, "
-            f"version={version}, "
             f"is_online={self.is_online!r}, "
             f"established={self.established!r}, "
             f"disable_cache={self.cache is None!r})"
@@ -433,10 +274,6 @@ class AntaDevice(ABC):
         - `established`: When a command execution succeeds.
 
         - `hw_model`: The hardware model of the device.
-
-        Implementations may additionally populate `platform` with an object implementing
-        the `DevicePlatform` protocol. Consumers must remain compatible with
-        implementations that only populate `hw_model`.
         """
 
     async def copy(self, sources: list[Path], destination: Path, direction: Literal["to", "from"] = "from") -> None:
@@ -458,25 +295,9 @@ class AntaDevice(ABC):
         msg = f"copy() method has not been implemented in {self.__class__.__name__} definition"
         raise NotImplementedError(msg)
 
-    async def disconnect(self) -> None:
-        """Disconnect the device and close any open connections.
-
-        It is not mandatory to implement this for a valid AntaDevice subclass.
-        If disconnection logic is not needed, implement this method as `pass`.
-        Subclasses should document the concrete resources they close.
-
-        NOTE:
-            In ANTA 2.0, this method will be made abstract and must be implemented by all subclasses.
-        """
-        msg = f"disconnect() method has not been implemented in {self.__class__.__name__} definition"
-        logger.warning(msg)
-
 
 class AsyncEOSDevice(AntaDevice):
-    """Implementation of AntaDevice for EOS using the `asynceapi` library, which is built on HTTPX.
-
-    Call `disconnect()` to close the eAPI httpx client. Call `refresh()` to re-establish
-    the eAPI connection; it automatically recreates `_client` if it has been closed.
+    """Implementation of AntaDevice for EOS using aio-eapi.
 
     Attributes
     ----------
@@ -488,36 +309,12 @@ class AsyncEOSDevice(AntaDevice):
         True if remote command execution succeeds.
     hw_model : str
         Hardware model of the device.
-    platform : DevicePlatform | None
-        Structured platform identity discovered during refresh.
     tags : set[str]
         Tags for this device.
-    enable : bool
-        When True, commands are collected in privileged (enable) mode.
-    ssl_params : SSLParameters | None
-        Per-device SSL parameters. None inherits the global SSL cipher setting.
+
     """
 
-    capabilities = AntaDeviceCapabilities(supports_session_auth=True, supports_ssl=True)
-    """Features supported by this device type."""
-
-    _client: asynceapi.Device
-    """
-    The underlying HTTPX-based eAPI client. Created by `_create_client()`.
-    Closed by `disconnect()`; automatically recreated on the next `refresh()` call.
-    """
-    _eapi_opts: EAPIClientConnectionOptions
-    """
-    eAPI client connection options used to create `_client`.
-    """
-    _ssh_opts: SSHClientConnectionOptions
-    """
-    SSH client connection options used to establish transient SSH connections in `copy()`.
-    """
-    _ssl_params: SSLParameters | None
-    """Explicit per-device SSL parameters, or None to inherit global SSL settings."""
-
-    def __init__(  # noqa: PLR0913 # noqa: S107
+    def __init__(  # noqa: PLR0913
         self,
         host: str,
         username: str,
@@ -525,7 +322,7 @@ class AsyncEOSDevice(AntaDevice):
         name: str | None = None,
         enable_password: str | None = None,
         port: int | None = None,
-        ssh_port: int = 22,
+        ssh_port: int | None = 22,
         tags: set[str] | None = None,
         timeout: float | None = None,
         proto: Literal["http", "https"] = "https",
@@ -533,8 +330,6 @@ class AsyncEOSDevice(AntaDevice):
         enable: bool = False,
         insecure: bool = False,
         disable_cache: bool = False,
-        use_session_auth: bool = False,
-        ssl_params: SSLParameters | None = None,
     ) -> None:
         """Instantiate an AsyncEOSDevice.
 
@@ -548,6 +343,8 @@ class AsyncEOSDevice(AntaDevice):
             Password to connect to eAPI and SSH.
         name
             Device name.
+        enable
+            Collect commands using privileged mode.
         enable_password
             Password used to gain privileged access on EOS.
         port
@@ -557,19 +354,14 @@ class AsyncEOSDevice(AntaDevice):
         tags
             Tags for this device.
         timeout
-            Global timeout value in seconds for outgoing eAPI calls. None means no timeout.
-        proto
-            eAPI protocol. Value can be 'http' or 'https'.
-        enable
-            Collect commands using privileged mode.
+            Timeout value in seconds for outgoing API calls.
         insecure
             Disable SSH Host Key validation.
+        proto
+            eAPI protocol. Value can be 'http' or 'https'.
         disable_cache
             Disable caching for all commands for this device.
-        use_session_auth
-            Use eAPI cookie-session authentication for this device.
-        ssl_params
-            SSL parameters for HTTPS eAPI connections. None inherits ``ANTA_SSL_CIPHERS``.
+
         """
         if host is None:
             message = "'host' is required to create an AsyncEOSDevice"
@@ -588,40 +380,12 @@ class AsyncEOSDevice(AntaDevice):
             raise ValueError(message)
         self.enable = enable
         self._enable_password = enable_password
-        self._eapi_opts = EAPIClientConnectionOptions(
-            host=host, username=username, password=password, port=port, proto=proto, timeout=timeout, use_session_auth=use_session_auth
-        )
-        self._ssl_params = ssl_params
-        self._client = self._create_client()
+        self._session: asynceapi.Device = asynceapi.Device(host=host, port=port, username=username, password=password, proto=proto, timeout=timeout)
         ssh_params: dict[str, Any] = {}
         if insecure:
             ssh_params["known_hosts"] = None
-        self._ssh_opts = SSHClientConnectionOptions(host=host, port=ssh_port, username=username, password=password, client_keys=CLIENT_KEYS, **ssh_params)
-
-        self._command_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
-
-    def _create_client(self) -> asynceapi.Device:
-        """Create and return a new asynceapi.Device client using stored connection options."""
-        eapi_opts = self._eapi_opts
-        httpx_settings = get_httpx_settings()
-        ssl_params = self._ssl_params
-        if ssl_params is None and (global_ciphers := get_ssl_settings().ciphers) is not None:
-            ssl_params = SSLParameters(ciphers=global_ciphers)
-
-        verify: ssl.SSLContext | bool = False
-        if eapi_opts.proto == "https" and ssl_params is not None:
-            verify = ssl_params.create_ssl_context(trust_env=httpx_settings.trust_env)
-
-        return asynceapi.Device(
-            host=eapi_opts.host,
-            port=eapi_opts.port,
-            username=eapi_opts.username,
-            password=eapi_opts.password,
-            proto=eapi_opts.proto,
-            timeout=eapi_opts.timeout,
-            trust_env=httpx_settings.trust_env,
-            verify=verify,
-            use_session_auth=eapi_opts.use_session_auth,
+        self._ssh_opts: SSHClientConnectionOptions = SSHClientConnectionOptions(
+            host=host, port=ssh_port, username=username, password=password, client_keys=CLIENT_KEYS, **ssh_params
         )
 
     def __rich_repr__(self) -> Iterator[tuple[str, Any]]:
@@ -630,50 +394,33 @@ class AsyncEOSDevice(AntaDevice):
         https://rich.readthedocs.io/en/stable/pretty.html#rich-repr-protocol.
         """
         yield from super().__rich_repr__()
-        yield ("platform", self.platform)
-        yield ("host", self._client.host)
-        yield ("eapi_port", self._client.port)
+        yield ("host", self._session.host)
+        yield ("eapi_port", self._session.port)
         yield ("username", self._ssh_opts.username)
         yield ("enable", self.enable)
         yield ("insecure", self._ssh_opts.known_hosts is None)
-        if self.ssl_params is not None:
-            yield ("ssl_params", self.ssl_params)
         if __DEBUG__:
             _ssh_opts = vars(self._ssh_opts).copy()
             removed_pw = "<removed>"
             _ssh_opts["password"] = removed_pw
             _ssh_opts["kwargs"]["password"] = removed_pw
-            yield (
-                "_client",
-                {
-                    "host": self._client.host,
-                    "port": self._client.port,
-                    "base_url": str(self._client.base_url),
-                    "is_closed": self._client.is_closed,
-                },
-            )
+            yield ("_session", vars(self._session))
             yield ("_ssh_opts", _ssh_opts)
-            yield ("max_connections", self.max_connections) if self.max_connections is not None else ("max_connections", "N/A")
 
     def __repr__(self) -> str:
         """Return a printable representation of an AsyncEOSDevice."""
-        version = repr(str(self.version)) if self.version is not None else "None"
-        ssl_params = f", ssl_params={self.ssl_params!r}" if self.ssl_params is not None else ""
         return (
             f"AsyncEOSDevice({self.name!r}, "
             f"tags={self.tags!r}, "
             f"hw_model={self.hw_model!r}, "
-            f"platform={self.platform!r}, "
-            f"version={version}, "
             f"is_online={self.is_online!r}, "
             f"established={self.established!r}, "
             f"disable_cache={self.cache is None!r}, "
-            f"host={self._client.host!r}, "
-            f"eapi_port={self._client.port!r}, "
+            f"host={self._session.host!r}, "
+            f"eapi_port={self._session.port!r}, "
             f"username={self._ssh_opts.username!r}, "
             f"enable={self.enable!r}, "
-            f"insecure={self._ssh_opts.known_hosts is None!r}"
-            f"{ssl_params})"
+            f"insecure={self._ssh_opts.known_hosts is None!r})"
         )
 
     @property
@@ -682,28 +429,10 @@ class AsyncEOSDevice(AntaDevice):
 
         This covers the use case of port forwarding when the host is localhost and the devices have different ports.
         """
-        return (self._client.host, self._client.port)
-
-    @property
-    def max_connections(self) -> int | None:
-        """Maximum number of concurrent connections allowed by the device. Returns None if not available."""
-        try:
-            return self._client._transport._pool._max_connections  # type: ignore[attr-defined]  # noqa: SLF001
-        except AttributeError:
-            return None
-
-    @property
-    def use_session_auth(self) -> bool:
-        """Whether eAPI cookie-session authentication is enabled for this device."""
-        return self._eapi_opts.use_session_auth
-
-    @property
-    def ssl_params(self) -> SSLParameters | None:
-        """Explicit per-device SSL parameters, or None when global defaults are inherited."""
-        return self._ssl_params
+        return (self._session.host, self._session.port)
 
     async def _collect(self, command: AntaCommand, *, collection_id: str | None = None) -> None:
-        """Collect device command output from EOS using asynceapi.
+        """Collect device command output from EOS using aio-eapi.
 
         Supports outformat `json` and `text` as output structure.
         Gain privileged access using the `enable_password` attribute
@@ -715,211 +444,101 @@ class AsyncEOSDevice(AntaDevice):
             The command to collect.
         collection_id
             An identifier used to build the eAPI request ID.
-
-        Raises
-        ------
-        RuntimeError
-            If the eAPI client is closed. Call `refresh()` first to reconnect.
         """
-        if self._client.is_closed:
-            msg = f"Device {self.name}: httpx client is closed. Call refresh() to reconnect before collecting commands."
-            raise RuntimeError(msg)
-        async with self._command_semaphore:
-            commands: list[EapiComplexCommand | EapiSimpleCommand] = []
-            if self.enable and self._enable_password is not None:
-                commands.append(
-                    {
-                        "cmd": "enable",
-                        "input": str(self._enable_password),
-                    },
-                )
-            elif self.enable:
-                # No password
-                commands.append(EapiComplexCommand(cmd="enable"))
-            commands += [EapiComplexCommand(cmd=command.command, revision=command.revision)] if command.revision else [EapiComplexCommand(cmd=command.command)]
-            try:
-                response = await self._client.cli(
-                    commands=commands,
-                    ofmt=command.ofmt,
-                    version=command.version,
-                    req_id=f"ANTA-{collection_id}-{id(command)}" if collection_id else f"ANTA-{id(command)}",
-                )
-                # Do not keep response of 'enable' command
-                command.output = response[-1]
-            except asynceapi.EapiCommandError as e:
-                # This block catches exceptions related to EOS issuing an error.
-                self._handle_eapi_command_error(command, e)
-            except EapiAuthenticationError as e:
-                # This block catches authentication errors (HTTP 401) from eAPI when session auth is enabled.
-                command.errors = [exc_to_str(e)]
-                logger.error("Authentication failed while sending a command to %s: %s", self.name, e)
-            except TimeoutException as e:
-                # This block catches Timeout exceptions.
-                command.errors = [exc_to_str(e)]
-                timeouts = self._client.timeout.as_dict()
-                logger.error(
-                    "%s occurred while sending a command to %s. Consider increasing the timeout.\nCurrent timeouts: Connect: %s | Read: %s | Write: %s | Pool: %s",
-                    exc_to_str(e),
-                    self.name,
-                    timeouts["connect"],
-                    timeouts["read"],
-                    timeouts["write"],
-                    timeouts["pool"],
-                )
-            except (ConnectError, OSError) as e:
-                # This block catches OSError and socket issues related exceptions.
-                command.errors = [exc_to_str(e)]
-                self._handle_connect_error(e)
-            except HTTPError as e:
-                # This block catches most of the httpx Exceptions and logs a general message.
-                command.errors = [exc_to_str(e)]
-                anta_log_exception(e, f"An error occurred while issuing an eAPI request to {self.name}", logger)
-            logger.debug("%s: %s", self.name, command)
-
-    def _handle_eapi_command_error(self, command: AntaCommand, e: asynceapi.EapiCommandError) -> None:
-        """Handle and appropriately log an EapiCommandError exception."""
-        # Filter out empty strings from the list of errors
-        error_details = [err for err in e.errors if err]
-
-        if not error_details:
-            # If e.errors is empty or just [""], fall back to e.errmsg
-            # Split on the first " failed: " and keep only the reason for the failure
-            cleaned_errmsg = e.errmsg.split(" failed: ", 1)[-1]
-            command.errors = [cleaned_errmsg]
-        else:
-            command.errors = error_details
-
-        # Join errors for cleaner logging
-        error_message_str = ", ".join(command.errors)
-
-        if command.errors_deferred:
-            logger.debug("Command '%s' on device %s returned an error deferred to the test: %s", command.command, self.name, error_message_str)
-        elif command.requires_privileges:
+        commands: list[dict[str, str | int]] = []
+        if self.enable and self._enable_password is not None:
+            commands.append(
+                {
+                    "cmd": "enable",
+                    "input": str(self._enable_password),
+                },
+            )
+        elif self.enable:
+            # No password
+            commands.append({"cmd": "enable"})
+        commands += [{"cmd": command.command, "revision": command.revision}] if command.revision else [{"cmd": command.command}]
+        try:
+            response: list[dict[str, Any] | str] = await self._session.cli(
+                commands=commands,
+                ofmt=command.ofmt,
+                version=command.version,
+                req_id=f"ANTA-{collection_id}-{id(command)}" if collection_id else f"ANTA-{id(command)}",
+            )  # type: ignore[assignment] # multiple commands returns a list
+            # Do not keep response of 'enable' command
+            command.output = response[-1]
+        except asynceapi.EapiCommandError as e:
+            # This block catches exceptions related to EOS issuing an error.
+            self._log_eapi_command_error(command, e)
+        except TimeoutException as e:
+            # This block catches Timeout exceptions.
+            command.errors = [exc_to_str(e)]
+            timeouts = self._session.timeout.as_dict()
             logger.error(
-                "Command '%s' on device %s requires privileged mode. Verify user permissions and if the 'enable' option is required.",
-                command.command,
+                "%s occurred while sending a command to %s. Consider increasing the timeout.\nCurrent timeouts: Connect: %s | Read: %s | Write: %s | Pool: %s",
+                exc_to_str(e),
                 self.name,
+                timeouts["connect"],
+                timeouts["read"],
+                timeouts["write"],
+                timeouts["pool"],
             )
-        elif not command.supported:
-            logger.warning("Command '%s' on device %s is not supported on this platform (%s)", command.command, self.name, self.hw_model)
-        elif command.returned_known_eos_error:
-            logger.debug("Command '%s' on device %s returned a known EOS error: %s", command.command, self.name, error_message_str)
-        else:
-            logger.error("Command '%s' on device %s failed: %s", command.command, self.name, error_message_str)
-
-    def _handle_connect_error(self, e: ConnectError | OSError) -> None:
-        """Handle and log a ConnectError or OSError raised during command collection."""
-        # pylint: disable=no-member
-        if (isinstance(exc := e.__cause__, httpcore.ConnectError) and isinstance(os_error := exc.__context__, OSError)) or isinstance(os_error := e, OSError):
-            if isinstance(os_error.__cause__, OSError):
-                os_error = os_error.__cause__
-            logger.error("A local OS error occurred while connecting to %s: %s.", self.name, os_error)
-        else:
+        except (ConnectError, OSError) as e:
+            # This block catches OSError and socket issues related exceptions.
+            command.errors = [exc_to_str(e)]
+            if (isinstance(exc := e.__cause__, httpcore.ConnectError) and isinstance(os_error := exc.__context__, OSError)) or isinstance(os_error := e, OSError):  # pylint: disable=no-member
+                if isinstance(os_error.__cause__, OSError):
+                    os_error = os_error.__cause__
+                logger.error("A local OS error occurred while connecting to %s: %s.", self.name, os_error)
+            else:
+                anta_log_exception(e, f"An error occurred while issuing an eAPI request to {self.name}", logger)
+        except HTTPError as e:
+            # This block catches most of the httpx Exceptions and logs a general message.
+            command.errors = [exc_to_str(e)]
             anta_log_exception(e, f"An error occurred while issuing an eAPI request to {self.name}", logger)
+        logger.debug("%s: %s", self.name, command)
 
-    async def _refresh_platform_modules(self, platform: PlatformIdentity) -> None:
-        """Collect and parse optional module inventory for a chassis platform.
-
-        Parameters
-        ----------
-        platform : PlatformIdentity
-            Base chassis identity resolved from `show version`.
-        """
-        show_module = AntaCommand(command="show module", revision=1)
-        await self._collect(show_module)
-        if not show_module.collected:
-            reason = ParseFailureReason.UNSUPPORTED if show_module.error and not show_module.supported else ParseFailureReason.COLLECTION_FAILED
-            _log_platform_parse_failure(ParseFail(reason, "show module could not be collected"), self.name, module_inventory=True)
-            return
-        if not isinstance(show_module.output, Mapping):
-            _log_platform_parse_failure(
-                ParseFail(ParseFailureReason.MALFORMED, "show module output is not a mapping"),
-                self.name,
-                module_inventory=True,
-            )
-            return
-        module_result = parse_eos_platform_modules(platform, show_module.output)
-        if isinstance(module_result, ParseFail):
-            _log_platform_parse_failure(module_result, self.name, module_inventory=True)
-            return
-        self.platform = module_result.value
+    def _log_eapi_command_error(self, command: AntaCommand, e: asynceapi.EapiCommandError) -> None:
+        """Appropriately log the eapi command error."""
+        command.errors = e.errors
+        if command.requires_privileges:
+            logger.error("Command '%s' requires privileged mode on %s. Verify user permissions and if the `enable` option is required.", command.command, self.name)
+        if not command.supported:
+            logger.debug("Command '%s' is not supported on '%s' (%s)", command.command, self.name, self.hw_model)
+        elif command.returned_known_eos_error:
+            logger.debug("Command '%s' returned a known error '%s': %s", command.command, self.name, command.errors)
+        else:
+            logger.error("Command '%s' failed on %s: %s", command.command, self.name, e.errors[0] if len(e.errors) == 1 else e.errors)
 
     async def refresh(self) -> None:
         """Update attributes of an AsyncEOSDevice instance.
 
-        If the eAPI client has been closed (e.g. after a `disconnect()` call), it is
-        automatically recreated before attempting to reach the device.
-
-        Updates the following attributes:
-
-        - `is_online`: True when the eAPI HTTP endpoint responds successfully.
-        - `established`: True when `show version` succeeds and provides a valid hardware model.
-        - `hw_model`: Hardware model parsed from `show version`.
-        - `platform`: Structured system and module identity parsed from EOS inventory commands.
-        - `version`: EOS version parsed from `show version`, or `None` when unavailable or invalid.
+        This coroutine must update the following attributes of AsyncEOSDevice:
+        - is_online: When a device IP is reachable and a port can be open
+        - established: When a command execution succeeds
+        - hw_model: The hardware model of the device
         """
         logger.debug("Refreshing device %s", self.name)
-        self.version = None
-        self.platform = None
-        if self._client.is_closed:
-            logger.debug("Recreating closed httpx client for device %s", self.name)
-            self._client = self._create_client()
-        try:
-            self.is_online = await self._client.check_api_endpoint()
-        except (EapiAuthenticationError, HTTPError) as e:
-            self.is_online = False
-            self.established = False
-            logger.warning("An error occurred while attempting to connect to device %s: %s", self.name, exc_to_str(e))
-            return
-
-        show_version = AntaCommand(command="show version")
-        await self._collect(show_version)
-        if not show_version.collected:
-            self.established = False
-            logger.warning("Cannot get hardware information from device %s", self.name)
-            return
-
-        show_version_output = show_version.json_output
-        model_name = show_version_output.get("modelName")
-        self.hw_model = model_name if isinstance(model_name, str) else None
-        version_result = parse_eos_version(show_version_output.get("version"))
-        if isinstance(version_result, ParseFail):
-            logger.warning("Cannot parse EOS version for device %s: %s (%s)", self.name, version_result.reason.value, version_result.detail)
+        self.is_online = await self._session.check_connection()
+        if self.is_online:
+            show_version = AntaCommand(command="show version")
+            await self._collect(show_version)
+            if not show_version.collected:
+                logger.warning("Cannot get hardware information from device %s", self.name)
+            else:
+                self.hw_model = show_version.json_output.get("modelName", None)
+                if self.hw_model is None:
+                    logger.critical("Cannot parse 'show version' returned by device %s", self.name)
+                # in some cases it is possible that 'modelName' comes back empty
+                # and it is nice to get a meaninfule error message
+                elif self.hw_model == "":
+                    logger.critical("Got an empty 'modelName' in the 'show version' returned by device %s", self.name)
         else:
-            self.version = version_result.value
-        self.established = True
-        platform_result = parse_eos_platform(self.hw_model)
-        if isinstance(platform_result, ParseFail):
-            _log_platform_parse_failure(platform_result, self.name)
-            self.established = False
-            return
+            logger.warning("Could not connect to device %s: cannot open eAPI port", self.name)
 
-        platform = platform_result.value
-        self.platform = platform
-        if platform.type is PlatformType.UNKNOWN:
-            logger.debug("System model %s on device %s has an unknown platform type", platform.model, self.name)
-
-        # TODO(ANTA 1.10): Confirm eager module collection is acceptable before release. If benchmarks
-        # show meaningful refresh overhead, consider an inventory-level `required_device_facts` opt-in.
-        if platform.type is PlatformType.CHASSIS:
-            await self._refresh_platform_modules(platform)
-
-    async def disconnect(self) -> None:
-        """Close the eAPI httpx client.
-
-        Safe to call even if the client is already closed.
-        Use `refresh()` to reconnect.
-        """
-        logger.debug("Disconnecting device %s", self.name)
-        if not self._client.is_closed:
-            await self._client.aclose()
-        self.is_online = False
-        self.established = False
+        self.established = bool(self.is_online and self.hw_model)
 
     async def copy(self, sources: list[Path], destination: Path, direction: Literal["to", "from"] = "from") -> None:
         """Copy files to and from the device using asyncssh.scp().
-
-        The SSH connection is established transiently and closed safely via an `async with` context.
 
         Parameters
         ----------

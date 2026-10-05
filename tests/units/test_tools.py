@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Tests for `anta.tools`."""
@@ -7,28 +7,11 @@ from __future__ import annotations
 
 from contextlib import AbstractContextManager
 from contextlib import nullcontext as does_not_raise
-from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any
-from unittest.mock import AsyncMock, patch
+from typing import Any
 
 import pytest
 
-from anta.tools import (
-    convert_categories,
-    cprofile,
-    custom_division,
-    format_data,
-    get_dict_superset,
-    get_failed_logs,
-    get_item,
-    get_value,
-    is_interface_ignored,
-    time_ago,
-)
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
+from anta.tools import convert_categories, custom_division, format_data, get_dict_superset, get_failed_logs, get_item, get_value
 
 TEST_GET_FAILED_LOGS_DATA = [
     {"id": 1, "name": "Alice", "age": 30, "email": "alice@example.com"},
@@ -154,7 +137,7 @@ def test_get_failed_logs(
             None,
             None,
             None,
-            pytest.raises(ValueError, match=r"not found in the provided list."),
+            pytest.raises(ValueError, match="not found in the provided list."),
             id="empty list and required",
         ),
         pytest.param(
@@ -198,7 +181,7 @@ def test_get_failed_logs(
             None,
             None,
             None,
-            pytest.raises(ValueError, match=r"not found in the provided list."),
+            pytest.raises(ValueError, match="not found in the provided list."),
             id="required",
         ),
         pytest.param(
@@ -209,7 +192,7 @@ def test_get_failed_logs(
             "custom_var_name",
             None,
             None,
-            pytest.raises(ValueError, match=r"custom_var_name not found in the provided list."),
+            pytest.raises(ValueError, match="custom_var_name not found in the provided list."),
             id="custom var_name",
         ),
         pytest.param(
@@ -231,7 +214,7 @@ def test_get_failed_logs(
             "custom_var_name",
             "Custom error message",
             None,
-            pytest.raises(ValueError, match=r"Custom error message"),
+            pytest.raises(ValueError, match="Custom error message"),
             id="custom error message and required",
         ),
         pytest.param(
@@ -253,7 +236,7 @@ def test_get_failed_logs(
             None,
             None,
             None,
-            pytest.raises(ValueError, match=r"not found in the provided list."),
+            pytest.raises(ValueError, match="not found in the provided list."),
             id="non-list input for list_of_dicts",
         ),
         pytest.param(
@@ -264,7 +247,7 @@ def test_get_failed_logs(
             None,
             None,
             None,
-            pytest.raises(ValueError, match=r"not found in the provided list."),
+            pytest.raises(ValueError, match="not found in the provided list."),
             id="non-dictionary input",
         ),
         pytest.param(
@@ -286,7 +269,7 @@ def test_get_failed_logs(
             None,
             None,
             None,
-            pytest.raises(ValueError, match=r"not found in the provided list."),
+            pytest.raises(ValueError, match="not found in the provided list."),
             id="input dictionary with extra keys",
         ),
         pytest.param(
@@ -314,7 +297,7 @@ def test_get_failed_logs(
             None,
             None,
             None,
-            pytest.raises(ValueError, match=r"not found in the provided list."),
+            pytest.raises(ValueError, match="not found in the provided list."),
             id="input dictionary is a superset of a dictionary in list_of_dicts",
         ),
     ],
@@ -399,7 +382,7 @@ def test_get_dict_superset(
             None,
             None,
             None,
-            pytest.raises(ValueError, match=r"missing_required"),
+            pytest.raises(ValueError, match="missing_required"),
             id="required",
         ),
         pytest.param(
@@ -410,7 +393,7 @@ def test_get_dict_superset(
             "custom_org_key",
             None,
             None,
-            pytest.raises(ValueError, match=r"custom_org_key"),
+            pytest.raises(ValueError, match="custom_org_key"),
             id="custom org_key",
         ),
         pytest.param(
@@ -452,11 +435,11 @@ def test_get_value(
     ("list_of_dicts", "key", "value", "default", "required", "case_sensitive", "var_name", "custom_error_msg", "expected_result", "expected_raise"),
     [
         pytest.param([], "name", "Bob", None, False, False, None, None, None, does_not_raise(), id="empty list"),
-        pytest.param([], "name", "Bob", None, True, False, None, None, None, pytest.raises(ValueError, match=r"name"), id="empty list and required"),
+        pytest.param([], "name", "Bob", None, True, False, None, None, None, pytest.raises(ValueError, match="name"), id="empty list and required"),
         pytest.param(TEST_GET_ITEM_DATA, "name", "Jack", None, False, False, None, None, None, does_not_raise(), id="missing item"),
         pytest.param(TEST_GET_ITEM_DATA, "name", "Alice", None, False, False, None, None, TEST_GET_ITEM_DATA[1], does_not_raise(), id="found item"),
         pytest.param(TEST_GET_ITEM_DATA, "name", "Jack", "default_value", False, False, None, None, "default_value", does_not_raise(), id="default value"),
-        pytest.param(TEST_GET_ITEM_DATA, "name", "Jack", None, True, False, None, None, None, pytest.raises(ValueError, match=r"name"), id="required"),
+        pytest.param(TEST_GET_ITEM_DATA, "name", "Jack", None, True, False, None, None, None, pytest.raises(ValueError, match="name"), id="required"),
         pytest.param(TEST_GET_ITEM_DATA, "name", "Bob", None, False, True, None, None, TEST_GET_ITEM_DATA[2], does_not_raise(), id="case sensitive"),
         pytest.param(TEST_GET_ITEM_DATA, "name", "charlie", None, False, False, None, None, TEST_GET_ITEM_DATA[3], does_not_raise(), id="case insensitive"),
         pytest.param(
@@ -469,7 +452,7 @@ def test_get_value(
             "custom_var_name",
             None,
             None,
-            pytest.raises(ValueError, match=r"custom_var_name"),
+            pytest.raises(ValueError, match="custom_var_name"),
             id="custom var_name",
         ),
         pytest.param(
@@ -482,7 +465,7 @@ def test_get_value(
             None,
             "custom_error_msg",
             None,
-            pytest.raises(ValueError, match=r"custom_error_msg"),
+            pytest.raises(ValueError, match="custom_error_msg"),
             id="custom error msg",
         ),
     ],
@@ -523,7 +506,7 @@ def test_custom_division(numerator: float, denominator: float, expected_result: 
     [
         pytest.param([], does_not_raise(), [], id="empty list"),
         pytest.param(["bgp", "system", "vlan", "configuration"], does_not_raise(), ["BGP", "System", "VLAN", "Configuration"], id="list with acronyms and titles"),
-        pytest.param(42, pytest.raises(TypeError, match=r"Wrong input type"), None, id="wrong input type"),
+        pytest.param(42, pytest.raises(TypeError, match="Wrong input type"), None, id="wrong input type"),
     ],
 )
 def test_convert_categories(test_input: list[str], expected_raise: AbstractContextManager[Exception], expected_result: list[str]) -> None:
@@ -544,136 +527,3 @@ def test_convert_categories(test_input: list[str], expected_raise: AbstractConte
 def test_format_data(input_data: dict[str, bool], expected_output: str) -> None:
     """Test format_data."""
     assert format_data(input_data) == expected_output
-
-
-CANONICAL_TYPES = {
-    "ethernet": "Ethernet",
-    "portchannel": "Port-Channel",
-    "vlan": "Vlan",
-    "loopback": "Loopback",
-    "management": "Management",
-    "tunnel": "Tunnel",
-    "fabric": "Fabric",
-    "vxlan": "Vxlan",
-    "dps": "Dps",
-    "recircchannel": "Recirc-Channel",
-}
-
-
-@pytest.mark.parametrize(
-    ("input_params", "expected_output"),
-    [
-        # Docstring Examples
-        pytest.param({"interface": "Ethernet1", "ignored_interfaces": [CANONICAL_TYPES["ethernet"], "Port-Channel1"]}, True, id="doc_ex1_prefix_match_type"),
-        pytest.param({"interface": "Ethernet2", "ignored_interfaces": ["Ethernet1", CANONICAL_TYPES["portchannel"]]}, False, id="doc_ex2_no_match"),
-        pytest.param(
-            {"interface": "Port-Channel1", "ignored_interfaces": ["Ethernet1", CANONICAL_TYPES["portchannel"]]}, True, id="doc_ex3_prefix_match_type_portchannel"
-        ),
-        pytest.param({"interface": "Ethernet1/1", "ignored_interfaces": ["Ethernet1/1", CANONICAL_TYPES["portchannel"]]}, True, id="doc_ex4_exact_match_subif"),
-        pytest.param(
-            {"interface": "Ethernet1/1", "ignored_interfaces": ["Ethernet1", CANONICAL_TYPES["portchannel"]]}, False, id="doc_ex5_no_match_specific_ignored_name"
-        ),
-        pytest.param(
-            {"interface": "Ethernet1.100", "ignored_interfaces": ["Ethernet1.100", CANONICAL_TYPES["portchannel"]]}, True, id="doc_ex6_exact_match_dot_subif"
-        ),
-        # Cases for None or Empty ignored_interfaces (function returns None)
-        pytest.param({"interface": "Loopback0", "ignored_interfaces": None}, None, id="none_ignored_list"),
-        pytest.param({"interface": "Management1", "ignored_interfaces": []}, None, id="empty_ignored_list"),
-        # Exact Match Cases (full interface names in ignored_interfaces list)
-        pytest.param({"interface": "Vlan20", "ignored_interfaces": ["Vlan20", CANONICAL_TYPES["ethernet"]]}, True, id="exact_match_Vlan20"),
-        pytest.param(
-            {"interface": "Port-Channel200", "ignored_interfaces": ["port-channel200", CANONICAL_TYPES["ethernet"]]}, False, id="exact_match_case_sensitive_fail"
-        ),
-        pytest.param(
-            {"interface": "Port-Channel200", "ignored_interfaces": ["Port-Channel200", CANONICAL_TYPES["ethernet"]]}, True, id="exact_match_case_sensitive_pass"
-        ),
-        pytest.param({"interface": "Ethernet1/1/1", "ignored_interfaces": ["ethernet1/1/1"]}, False, id="exact_match_subif_case_fail"),
-        pytest.param({"interface": "Ethernet1/1/1", "ignored_interfaces": ["Ethernet1/1/1"]}, True, id="exact_match_subif_case_pass"),
-        # Prefix Match Cases (interface types in ignored_interfaces list)
-        pytest.param(
-            {"interface": "Ethernet10/1", "ignored_interfaces": [CANONICAL_TYPES["ethernet"], CANONICAL_TYPES["loopback"]]}, True, id="prefix_match_Ethernet_type"
-        ),
-        pytest.param(
-            {"interface": "Port-Channel123", "ignored_interfaces": [CANONICAL_TYPES["portchannel"], CANONICAL_TYPES["vlan"]]},
-            True,
-            id="prefix_match_PortChannel_type",
-        ),
-        pytest.param({"interface": "Tunnel5", "ignored_interfaces": [CANONICAL_TYPES["tunnel"], CANONICAL_TYPES["vxlan"]]}, True, id="prefix_match_Tunnel_type"),
-        pytest.param({"interface": "Fabric1/2", "ignored_interfaces": [CANONICAL_TYPES["fabric"]]}, True, id="prefix_match_Fabric_type"),
-        pytest.param({"interface": "Dps1", "ignored_interfaces": [CANONICAL_TYPES["dps"]]}, True, id="prefix_match_Dps_type"),
-        pytest.param({"interface": "Recirc-Channel2/1", "ignored_interfaces": [CANONICAL_TYPES["recircchannel"]]}, True, id="prefix_match_RecircChannel_type"),
-        # Prefix Match: Case sensitivity of items in ignored_interfaces
-        pytest.param(
-            {"interface": "Ethernet20/1", "ignored_interfaces": ["ethernet", CANONICAL_TYPES["loopback"]]}, False, id="prefix_match_vs_lowercase_type_in_list_fail"
-        ),
-        pytest.param({"interface": "Vlan30.10", "ignored_interfaces": ["vlan"]}, False, id="prefix_match_vs_lowercase_vlan_in_list_fail"),  # "Vlan" vs "vlan"
-        # Mixed: Exact name vs. Type in ignored_interfaces
-        pytest.param({"interface": "Ethernet1", "ignored_interfaces": ["Ethernet1"]}, True, id="mixed_exact_name_match_Ethernet1"),
-        pytest.param({"interface": "Ethernet1", "ignored_interfaces": [CANONICAL_TYPES["ethernet"]]}, True, id="mixed_type_match_Ethernet"),
-        pytest.param({"interface": "Ethernet1/1", "ignored_interfaces": [CANONICAL_TYPES["ethernet"]]}, True, id="mixed_type_match_subif_Ethernet"),
-        pytest.param({"interface": "Management1", "ignored_interfaces": ["Management1", CANONICAL_TYPES["management"]]}, True, id="mixed_exact_and_type_present"),
-        # No Match Cases
-        pytest.param(
-            {"interface": "Management1/1", "ignored_interfaces": [CANONICAL_TYPES["ethernet"], "Vlan10"]}, False, id="no_match_completely_different_types_and_names"
-        ),
-        pytest.param(
-            {"interface": "Loopback0", "ignored_interfaces": ["Loopback1", CANONICAL_TYPES["vxlan"]]}, False, id="no_match_specific_names_different_number"
-        ),
-        pytest.param({"interface": "Ethernet1", "ignored_interfaces": ["Eth", CANONICAL_TYPES["loopback"]]}, False, id="no_match_partial_prefix_in_list"),
-        pytest.param({"interface": "Vxlan1", "ignored_interfaces": [CANONICAL_TYPES["vlan"]]}, False, id="no_match_vxlan_vs_vlan_type"),
-    ],
-)
-def test_is_interface_ignored(input_params: dict[str, Any], expected_output: bool | None) -> None:
-    """Tests the is_interface_ignored function with various inputs, assuming Pydantic has validated and canonicalized interface names."""
-    interface_value = input_params["interface"]
-    ignored_interfaces_value = input_params["ignored_interfaces"]
-    assert is_interface_ignored(interface_value, ignored_interfaces_value) == expected_output
-
-
-@pytest.mark.parametrize(
-    ("time_delta", "expected_output"),
-    [
-        pytest.param(timedelta(seconds=30), "less than a minute", id="less_than_a_minute"),
-        pytest.param(timedelta(minutes=1), "1 minute", id="one_minute"),
-        pytest.param(timedelta(minutes=1, seconds=10), "1 minute", id="one_minute_plus_seconds"),
-        pytest.param(timedelta(minutes=15), "15 minutes", id="multiple_minutes"),
-        pytest.param(timedelta(hours=1), "1 hour", id="one_hour"),
-        pytest.param(timedelta(hours=1, minutes=10), "1 hour and 10 minutes", id="one_hour_and_minutes"),
-        pytest.param(timedelta(hours=3), "3 hours", id="multiple_hours"),
-        pytest.param(timedelta(hours=2, minutes=45), "2 hours and 45 minutes", id="multiple_hours_and_minutes"),
-        pytest.param(timedelta(days=1), "1 day", id="one_day"),
-        pytest.param(timedelta(days=1, hours=5), "1 day", id="one_day_plus_hours"),
-        pytest.param(timedelta(days=5), "5 days", id="multiple_days"),
-        pytest.param(timedelta(seconds=0), "less than a minute", id="exactly_now"),
-    ],
-)
-def test_time_ago(time_delta: timedelta, expected_output: str) -> None:
-    """Tests the time_ago function with various time deltas."""
-    now = datetime.now(timezone.utc)
-    test_timestamp = (now - time_delta).timestamp()
-
-    assert time_ago(test_timestamp) == expected_output
-
-
-async def test_cprofile_enabled(setenvvar: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Verify the cprofile decorator when ANTA_CPROFILE is set."""
-    setenvvar.setenv("ANTA_CPROFILE", str(tmp_path / "run.profile"))
-    async_mock = AsyncMock()
-
-    await cprofile()(async_mock)()
-
-    assert (tmp_path / "run.profile").exists()
-    async_mock.assert_called_once()
-
-
-async def test_cprofile_disabled(setenvvar: pytest.MonkeyPatch) -> None:
-    """Verify the cprofile decorator when ANTA_CPROFILE is not set."""
-    setenvvar.delenv("ANTA_CPROFILE", raising=False)
-    async_mock = AsyncMock()
-
-    with patch("cProfile.Profile.enable") as profiler_enabled, patch("cProfile.Profile.disable") as profiler_disabled:
-        await cprofile()(async_mock)()
-
-    async_mock.assert_called_once()
-    profiler_enabled.assert_not_called()
-    profiler_disabled.assert_not_called()

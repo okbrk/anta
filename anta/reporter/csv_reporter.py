@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """CSV Report management for ANTA."""
@@ -17,7 +17,6 @@ from anta.tools import convert_categories
 
 if TYPE_CHECKING:
     import pathlib
-    from collections.abc import Iterable, Iterator
 
     from anta.result_manager import ResultManager
     from anta.result_manager.models import TestResult
@@ -27,8 +26,6 @@ logger = logging.getLogger(__name__)
 
 class ReportCsv:
     """Build a CSV report."""
-
-    _REPORT_NAME = "CSV"
 
     @dataclass()
     class Headers:
@@ -86,37 +83,6 @@ class ReportCsv:
         ]
 
     @classmethod
-    def _headers(cls) -> list[str]:
-        """Return the CSV column headers."""
-        return [
-            cls.Headers.device,
-            cls.Headers.test_name,
-            cls.Headers.test_status,
-            cls.Headers.messages,
-            cls.Headers.description,
-            cls.Headers.categories,
-        ]
-
-    @classmethod
-    def _iter_rows(cls, results: ResultManager) -> Iterator[list[str]]:
-        """Yield CSV rows for the provided results."""
-        for result in results.results:
-            yield cls.convert_to_list(result)
-
-    @classmethod
-    def _write_rows(cls, csv_filename: pathlib.Path, headers: Iterable[str], rows: Iterable[Iterable[str]]) -> None:
-        """Write headers and rows to a CSV file."""
-        try:
-            with csv_filename.open(mode="w", encoding="utf-8", newline="") as csvfile:
-                csvwriter = csv.writer(csvfile, delimiter=",", lineterminator=os.linesep)
-                csvwriter.writerow(headers)
-                csvwriter.writerows(rows)
-        except OSError as exc:
-            message = f"OSError caught while writing the {cls._REPORT_NAME} file '{csv_filename.resolve()}'."
-            anta_log_exception(exc, message, logger)
-            raise
-
-    @classmethod
     def generate(cls, results: ResultManager, csv_filename: pathlib.Path) -> None:
         """Build CSV flle with tests results.
 
@@ -132,4 +98,26 @@ class ReportCsv:
         OSError
             if any is raised while writing the CSV file.
         """
-        cls._write_rows(csv_filename, cls._headers(), cls._iter_rows(results))
+        headers = [
+            cls.Headers.device,
+            cls.Headers.test_name,
+            cls.Headers.test_status,
+            cls.Headers.messages,
+            cls.Headers.description,
+            cls.Headers.categories,
+        ]
+
+        try:
+            with csv_filename.open(mode="w", encoding="utf-8", newline="") as csvfile:
+                csvwriter = csv.writer(
+                    csvfile,
+                    delimiter=",",
+                    lineterminator=os.linesep,
+                )
+                csvwriter.writerow(headers)
+                for entry in results.results:
+                    csvwriter.writerow(cls.convert_to_list(entry))
+        except OSError as exc:
+            message = f"OSError caught while writing the CSV file '{csv_filename.resolve()}'."
+            anta_log_exception(exc, message, logger)
+            raise

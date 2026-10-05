@@ -1,4 +1,0 @@
----
-anta_custom.dc_project:
-  - VerifyMinimumUptime:
-      minimum: 1

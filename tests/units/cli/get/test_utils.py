@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Tests for anta.cli.get.utils."""
@@ -13,16 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from anta._advisory.base import _AntaAdvisoryTest
-from anta.cli.get.utils import (
-    create_inventory_from_ansible,
-    create_inventory_from_cvp,
-    extract_examples,
-    find_tests_examples,
-    find_tests_in_module,
-    get_cv_token,
-    print_test,
-)
+from anta.cli.get.utils import create_inventory_from_ansible, create_inventory_from_cvp, extract_examples, find_tests_examples, get_cv_token, print_test
 from anta.inventory import AntaInventory
 from anta.models import AntaCommand, AntaTemplate, AntaTest
 
@@ -105,7 +96,7 @@ def test_create_inventory_from_cvp(tmp_path: Path, inventory: list[dict[str, Any
         pytest.param(
             "ansible_inventory.yml",
             "DUMMY",
-            pytest.raises(ValueError, match=r"Group DUMMY not found in Ansible inventory"),
+            pytest.raises(ValueError, match="Group DUMMY not found in Ansible inventory"),
             None,
             0,
             id="group not found",
@@ -113,7 +104,7 @@ def test_create_inventory_from_cvp(tmp_path: Path, inventory: list[dict[str, Any
         pytest.param(
             "empty_ansible_inventory.yml",
             None,
-            pytest.raises(ValueError, match=r"Ansible inventory .* is empty"),
+            pytest.raises(ValueError, match="Ansible inventory .* is empty"),
             None,
             0,
             id="empty inventory",
@@ -121,7 +112,7 @@ def test_create_inventory_from_cvp(tmp_path: Path, inventory: list[dict[str, Any
         pytest.param(
             "wrong_ansible_inventory.yml",
             None,
-            pytest.raises(ValueError, match=r"Could not parse"),
+            pytest.raises(ValueError, match="Could not parse"),
             None,
             0,
             id="os error inventory",
@@ -129,7 +120,7 @@ def test_create_inventory_from_cvp(tmp_path: Path, inventory: list[dict[str, Any
         pytest.param(
             "ansible_inventory_with_vault.yml",
             None,
-            pytest.raises(ValueError, match=r"Could not parse"),
+            pytest.raises(ValueError, match="Could not parse"),
             "`anta get from-ansible` does not support inline vaulted variables",
             0,
             id="Vault variable in inventory",
@@ -137,7 +128,7 @@ def test_create_inventory_from_cvp(tmp_path: Path, inventory: list[dict[str, Any
         pytest.param(
             "ansible_inventory_unknown_yaml_tag.yml",
             None,
-            pytest.raises(ValueError, match=r"Could not parse"),
+            pytest.raises(ValueError, match="Could not parse"),
             None,
             0,
             id="Unknown YAML tag in inventory",
@@ -228,31 +219,23 @@ class TypoExampleTest(AntaTest):
         self.result.is_success()
 
 
-def test_find_tests_in_module() -> None:
-    """Test find_tests_in_module.
+def test_find_tests_examples() -> None:
+    """Test find_tests_examples.
 
-    Test the failure scenario not tested through test_commands and verify
-    abstract test base classes are excluded from discovery.
+    Only testing the failure scenarii not tested through test_commands.
+    TODO: expand
     """
-    with pytest.raises(ValueError, match=r"Error when importing"):
-        find_tests_in_module("blah", "UnusedTestName")
-    assert _AntaAdvisoryTest not in find_tests_in_module("anta._advisory.base", None)
-
-
-def test_find_tests_examples_excludes_abstract_classes() -> None:
-    """Test find_tests_examples excludes abstract advisory base classes."""
-    with pytest.raises(ValueError, match=r"Error when importing"):
-        find_tests_examples("blah", "UnusedTestName", count=True)
-    assert find_tests_examples("anta._advisory.base", None, count=True) == 0
+    with pytest.raises(ValueError, match="Error when importing"):
+        find_tests_examples("blah", "UnusedTestName")
 
 
 def test_print_test() -> None:
     """Test print_test."""
-    with pytest.raises(ValueError, match=r"Could not find the name of the test"):
+    with pytest.raises(ValueError, match="Could not find the name of the test"):
         print_test(TypoExampleTest)
-    with pytest.raises(LookupError, match=r"is missing an Example"):
+    with pytest.raises(LookupError, match="is missing an Example"):
         print_test(MissingExampleTest)
-    with pytest.raises(LookupError, match=r"is missing an Example"):
+    with pytest.raises(LookupError, match="is missing an Example"):
         print_test(EmptyExampleTest)
 
 

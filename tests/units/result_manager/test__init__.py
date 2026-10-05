@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Test anta.result_manager.__init__.py."""
@@ -9,7 +9,7 @@ import json
 import logging
 import re
 from contextlib import AbstractContextManager, nullcontext
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 import pytest
 
@@ -17,8 +17,6 @@ from anta.result_manager import ResultManager, models
 from anta.result_manager.models import AntaTestStatus
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from anta.result_manager.models import TestResult
 
 
@@ -26,13 +24,16 @@ if TYPE_CHECKING:
 class TestResultManager:
     """Test ResultManager class."""
 
-    # TODO: test __init__() and reset()
+    # not testing __init__ as nothing is going on there
 
-    def test__len__(self, result_manager_factory: Callable[[int], ResultManager]) -> None:
+    def test__len__(self, list_result_factory: Callable[[int], list[TestResult]]) -> None:
         """Test __len__."""
+        list_result = list_result_factory(3)
+        result_manager = ResultManager()
+        assert len(result_manager) == 0
         for i in range(3):
-            result_manager = result_manager_factory(i)
-            assert len(result_manager) == i
+            result_manager.add(list_result[i])
+            assert len(result_manager) == i + 1
 
     def test_results_getter(self, result_manager_factory: Callable[[int], ResultManager]) -> None:
         """Test ResultManager.results property getter."""
@@ -43,19 +44,19 @@ class TestResultManager:
         for e in res:
             assert isinstance(e, models.TestResult)
 
-    def test_results_setter(self, test_result_factory: Callable[..., TestResult], result_manager_factory: Callable[[int], ResultManager]) -> None:
+    def test_results_setter(self, list_result_factory: Callable[[int], list[TestResult]], result_manager_factory: Callable[[int], ResultManager]) -> None:
         """Test ResultManager.results property setter."""
         result_manager = result_manager_factory(3)
         assert len(result_manager) == 3
-        tests = [test_result_factory(i) for i in range(5)]
+        tests = list_result_factory(5)
         result_manager.results = tests
         assert len(result_manager) == 5
 
-    def test_json(self, test_result_factory: Callable[..., TestResult]) -> None:
+    def test_json(self, list_result_factory: Callable[[int], list[TestResult]]) -> None:
         """Test ResultManager.json property."""
         result_manager = ResultManager()
 
-        success_list = [test_result_factory(i) for i in range(3)]
+        success_list = list_result_factory(3)
         for test in success_list:
             test.result = AntaTestStatus.SUCCESS
         result_manager.results = success_list
@@ -70,16 +71,13 @@ class TestResultManager:
             assert isinstance(test.get("test"), str)
             assert isinstance(test.get("categories"), list)
             assert isinstance(test.get("description"), str)
-            # @gmuloc: Adding this as part of #1364 to make sure we don't remove custom_field again
-            # TODO: modify this if we add back exclude_none=True
-            assert "custom_field" in test
             assert test.get("custom_field") is None
             assert test.get("result") == "success"
 
-    def test_sorted_category_stats(self, test_result_factory: Callable[..., TestResult]) -> None:
+    def test_sorted_category_stats(self, list_result_factory: Callable[[int], list[TestResult]]) -> None:
         """Test ResultManager.sorted_category_stats."""
         result_manager = ResultManager()
-        results = [test_result_factory(i) for i in range(4)]
+        results = list_result_factory(4)
 
         # Modify the categories to have a mix of different acronym categories
         results[0].categories = ["ospf"]
@@ -92,6 +90,11 @@ class TestResultManager:
         # Check that category_stats returns sorted order by default
         expected_order = ["bgp", "ospf", "system", "vxlan"]
         assert list(result_manager.category_stats.keys()) == expected_order
+
+        # Verify deprecation warning for sorted_category_stats
+        with pytest.warns(DeprecationWarning, match="sorted_category_stats is deprecated and will be removed in ANTA v2.0.0"):
+            deprecated_stats = result_manager.sorted_category_stats
+            assert list(deprecated_stats.keys()) == expected_order
 
     @pytest.mark.parametrize(
         ("starting_status", "test_status", "expected_status", "expected_raise"),
@@ -146,7 +149,7 @@ class TestResultManager:
     )
     def test_add(
         self,
-        test_result_factory: Callable[..., TestResult],
+        test_result_factory: Callable[[], TestResult],
         starting_status: str,
         test_status: str,
         expected_status: str,
@@ -168,17 +171,17 @@ class TestResultManager:
                 assert result_manager.status == expected_status
             assert len(result_manager) == 1
 
-    def test_add_clear_cache(self, result_manager: ResultManager, test_result_factory: Callable[..., TestResult]) -> None:
+    def test_add_clear_cache(self, result_manager: ResultManager, test_result_factory: Callable[[], TestResult]) -> None:
         """Test ResultManager.add and make sure the cache is reset after adding a new test."""
         # Check the cache is empty
         assert "results_by_status" not in result_manager.__dict__
 
         # Access the cache
-        assert result_manager.get_total_results() == 181
+        assert result_manager.get_total_results() == 30
 
         # Check the cache is filled with the correct results count
         assert "results_by_status" in result_manager.__dict__
-        assert sum(len(v) for v in result_manager.__dict__["results_by_status"].values()) == 181
+        assert sum(len(v) for v in result_manager.__dict__["results_by_status"].values()) == 30
 
         # Add a new test
         result_manager.add(result=test_result_factory())
@@ -187,73 +190,71 @@ class TestResultManager:
         assert "results_by_status" not in result_manager.__dict__
 
         # Access the cache again
-        assert result_manager.get_total_results() == 182
+        assert result_manager.get_total_results() == 31
 
         # Check the cache is filled again with the correct results count
         assert "results_by_status" in result_manager.__dict__
-        assert sum(len(v) for v in result_manager.__dict__["results_by_status"].values()) == 182
+        assert sum(len(v) for v in result_manager.__dict__["results_by_status"].values()) == 31
 
     def test_get_results(self, result_manager: ResultManager) -> None:
         """Test ResultManager.get_results."""
         # Check for single status
         success_results = result_manager.get_results(status={AntaTestStatus.SUCCESS})
-        assert len(success_results) == 43
+        assert len(success_results) == 7
         assert all(r.result == "success" for r in success_results)
 
         # Check for multiple statuses
         failure_results = result_manager.get_results(status={AntaTestStatus.FAILURE, AntaTestStatus.ERROR})
-        assert len(failure_results) == 104
+        assert len(failure_results) == 21
         assert all(r.result in {"failure", "error"} for r in failure_results)
 
         # Check all results
         all_results = result_manager.get_results()
-        assert len(all_results) == 181
+        assert len(all_results) == 30
 
     def test_get_results_sort_by(self, result_manager: ResultManager) -> None:
         """Test ResultManager.get_results with sort_by."""
         # Check all results with sort_by result
         all_results = result_manager.get_results(sort_by=["result"])
-        assert len(all_results) == 181
-        assert [r.result for r in all_results] == ["error"] * 1 + ["failure"] * 103 + ["skipped"] * 34 + ["success"] * 43
+        assert len(all_results) == 30
+        assert [r.result for r in all_results] == ["error"] * 2 + ["failure"] * 19 + ["skipped"] * 2 + ["success"] * 7
 
         # Check all results with sort_by device (name)
         all_results = result_manager.get_results(sort_by=["name"])
-        assert len(all_results) == 181
-        assert all_results[0].name == "s1-spine1"
+        assert len(all_results) == 30
+        assert all_results[0].name == "DC1-LEAF1A"
+        assert all_results[-1].name == "DC1-SPINE1"
 
         # Check multiple statuses with sort_by categories
         success_skipped_results = result_manager.get_results(status={AntaTestStatus.SUCCESS, AntaTestStatus.SKIPPED}, sort_by=["categories"])
-        assert len(success_skipped_results) == 77
-        assert success_skipped_results[0].categories == ["avt"]
-        assert success_skipped_results[-1].categories == ["vxlan"]
-
-        # Check multiple statuses with sort_by custom_field
-        success_skipped_results = result_manager.get_results(status={AntaTestStatus.SUCCESS, AntaTestStatus.SKIPPED}, sort_by=["custom_field"])
-        assert len(success_skipped_results) == 77
-        assert success_skipped_results[-1].test == "VerifyReloadCause"
+        assert len(success_skipped_results) == 9
+        assert success_skipped_results[0].categories == ["Interfaces"]
+        assert success_skipped_results[-1].categories == ["VXLAN"]
 
         # Check all results with bad sort_by
         with pytest.raises(
             ValueError,
-            match=re.escape("Invalid sort_by fields: ['bad_field']."),
+            match=re.escape(
+                "Invalid sort_by fields: ['bad_field']. Accepted fields are: ['name', 'test', 'categories', 'description', 'result', 'messages', 'custom_field']",
+            ),
         ):
             all_results = result_manager.get_results(sort_by=["bad_field"])
 
     def test_get_total_results(self, result_manager: ResultManager) -> None:
         """Test ResultManager.get_total_results."""
         # Test all results
-        assert result_manager.get_total_results() == 181
+        assert result_manager.get_total_results() == 30
 
         # Test single status
-        assert result_manager.get_total_results(status={AntaTestStatus.SUCCESS}) == 43
-        assert result_manager.get_total_results(status={AntaTestStatus.FAILURE}) == 103
-        assert result_manager.get_total_results(status={AntaTestStatus.ERROR}) == 1
-        assert result_manager.get_total_results(status={AntaTestStatus.SKIPPED}) == 34
+        assert result_manager.get_total_results(status={AntaTestStatus.SUCCESS}) == 7
+        assert result_manager.get_total_results(status={AntaTestStatus.FAILURE}) == 19
+        assert result_manager.get_total_results(status={AntaTestStatus.ERROR}) == 2
+        assert result_manager.get_total_results(status={AntaTestStatus.SKIPPED}) == 2
 
         # Test multiple statuses
-        assert result_manager.get_total_results(status={AntaTestStatus.SUCCESS, AntaTestStatus.FAILURE}) == 146
-        assert result_manager.get_total_results(status={AntaTestStatus.SUCCESS, AntaTestStatus.FAILURE, AntaTestStatus.ERROR}) == 147
-        assert result_manager.get_total_results(status={AntaTestStatus.SUCCESS, AntaTestStatus.FAILURE, AntaTestStatus.ERROR, AntaTestStatus.SKIPPED}) == 181
+        assert result_manager.get_total_results(status={AntaTestStatus.SUCCESS, AntaTestStatus.FAILURE}) == 26
+        assert result_manager.get_total_results(status={AntaTestStatus.SUCCESS, AntaTestStatus.FAILURE, AntaTestStatus.ERROR}) == 28
+        assert result_manager.get_total_results(status={AntaTestStatus.SUCCESS, AntaTestStatus.FAILURE, AntaTestStatus.ERROR, AntaTestStatus.SKIPPED}) == 30
 
     @pytest.mark.parametrize(
         ("status", "error_status", "ignore_error", "expected_status"),
@@ -277,11 +278,11 @@ class TestResultManager:
 
         assert result_manager.get_status(ignore_error=ignore_error) == expected_status
 
-    def test_filter(self, test_result_factory: Callable[..., TestResult]) -> None:
+    def test_filter(self, test_result_factory: Callable[[], TestResult], list_result_factory: Callable[[int], list[TestResult]]) -> None:
         """Test ResultManager.filter."""
         result_manager = ResultManager()
 
-        success_list = [test_result_factory(i) for i in range(3)]
+        success_list = list_result_factory(3)
         for test in success_list:
             test.result = AntaTestStatus.SUCCESS
         result_manager.results = success_list
@@ -306,7 +307,7 @@ class TestResultManager:
         assert len(result_manager.filter({AntaTestStatus.FAILURE, AntaTestStatus.ERROR, AntaTestStatus.SKIPPED})) == 3
         assert len(result_manager.filter({AntaTestStatus.SUCCESS, AntaTestStatus.FAILURE, AntaTestStatus.ERROR, AntaTestStatus.SKIPPED})) == 0
 
-    def test_get_by_tests(self, test_result_factory: Callable[..., TestResult], result_manager_factory: Callable[[int], ResultManager]) -> None:
+    def test_get_by_tests(self, test_result_factory: Callable[[], TestResult], result_manager_factory: Callable[[int], ResultManager]) -> None:
         """Test ResultManager.get_by_tests."""
         result_manager = result_manager_factory(3)
 
@@ -328,7 +329,7 @@ class TestResultManager:
         assert len(rm) == 3
         assert len(rm.filter_by_tests({"Test1"})) == 1
 
-    def test_get_by_devices(self, test_result_factory: Callable[..., TestResult], result_manager_factory: Callable[[int], ResultManager]) -> None:
+    def test_get_by_devices(self, test_result_factory: Callable[[], TestResult], result_manager_factory: Callable[[int], ResultManager]) -> None:
         """Test ResultManager.get_by_devices."""
         result_manager = result_manager_factory(3)
 
@@ -350,11 +351,11 @@ class TestResultManager:
         assert len(rm) == 3
         assert len(rm.filter_by_devices({"Device1"})) == 1
 
-    def test_get_tests(self, test_result_factory: Callable[..., TestResult]) -> None:
+    def test_get_tests(self, test_result_factory: Callable[[], TestResult], list_result_factory: Callable[[int], list[TestResult]]) -> None:
         """Test ResultManager.get_tests."""
         result_manager = ResultManager()
 
-        tests = [test_result_factory(i) for i in range(3)]
+        tests = list_result_factory(3)
         for test in tests:
             test.test = "Test1"
         result_manager.results = tests
@@ -366,11 +367,11 @@ class TestResultManager:
         assert len(result_manager.get_tests()) == 2
         assert all(t in result_manager.get_tests() for t in ["Test1", "Test2"])
 
-    def test_get_devices(self, test_result_factory: Callable[..., TestResult]) -> None:
+    def test_get_devices(self, test_result_factory: Callable[[], TestResult], list_result_factory: Callable[[int], list[TestResult]]) -> None:
         """Test ResultManager.get_tests."""
         result_manager = ResultManager()
 
-        tests = [test_result_factory(i) for i in range(3)]
+        tests = list_result_factory(3)
         for test in tests:
             test.name = "Device1"
         result_manager.results = tests
@@ -382,7 +383,7 @@ class TestResultManager:
         assert len(result_manager.get_devices()) == 2
         assert all(t in result_manager.get_devices() for t in ["Device1", "Device2"])
 
-    def test_stats_computation_methods(self, test_result_factory: Callable[..., TestResult], caplog: pytest.LogCaptureFixture) -> None:
+    def test_stats_computation_methods(self, test_result_factory: Callable[[], TestResult], caplog: pytest.LogCaptureFixture) -> None:
         """Test ResultManager internal stats computation methods."""
         result_manager = ResultManager()
 
@@ -432,7 +433,7 @@ class TestResultManager:
         assert result_manager._test_stats["test1"].devices_success_count == 1
         assert result_manager._test_stats["test2"].devices_failure_count == 1
 
-    def test_stats_property_computation(self, test_result_factory: Callable[..., TestResult], caplog: pytest.LogCaptureFixture) -> None:
+    def test_stats_property_computation(self, test_result_factory: Callable[[], TestResult], caplog: pytest.LogCaptureFixture) -> None:
         """Test that stats are computed only once when accessed via properties."""
         result_manager = ResultManager()
 
@@ -471,7 +472,7 @@ class TestResultManager:
         # Add another result - should mark stats as unsynced
         test3 = test_result_factory()
         test3.name = "device3"
-        test3.result = AntaTestStatus.ERROR
+        test3.result = "error"
         result_manager.add(test3)
         assert result_manager._stats_in_sync is False
 
@@ -551,74 +552,18 @@ class TestResultManager:
         assert results[2].result == "failure"
         assert results[2].test == "Test2"
 
-    def test_sort_fields_as_none(self, test_result_factory: Callable[[], TestResult]) -> None:
-        """Test sorting by multiple fields."""
-        result_manager = ResultManager()
-        test1 = test_result_factory()
-        test1.result = AntaTestStatus.ERROR
-        test1.test = "Test3"
-        test1.custom_field = "custom"
-        test2 = test_result_factory()
-        test2.result = AntaTestStatus.ERROR
-        test2.test = "Test1"
-        test3 = test_result_factory()
-        test3.result = AntaTestStatus.FAILURE
-        test3.test = "Test2"
-
-        result_manager.results = [test1, test2, test3]
-        sorted_manager = result_manager.sort(["custom_field"])
-        results = sorted_manager.results
-
-        assert results[0].result == "error"
-        assert results[0].test == "Test1"
-        assert results[1].result == "failure"
-        assert results[1].test == "Test2"
-        assert results[2].result == "error"
-        assert results[2].test == "Test3"
-        assert results[2].custom_field == "custom"
-
     def test_sort_invalid_field(self) -> None:
         """Test that sort method raises ValueError for invalid sort_by fields."""
         result_manager = ResultManager()
-        expected_match = (
-            r"Invalid sort_by fields: ['bad_field']. Accepted fields are: "
-            r"['name', 'test', 'categories', 'description', 'result', 'messages', 'atomic_results', 'custom_field']"
-        )
-        with pytest.raises(ValueError, match=re.escape(expected_match)):
-            _ = result_manager.sort(["bad_field"])
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "Invalid sort_by fields: ['bad_field']. Accepted fields are: ['name', 'test', 'categories', 'description', 'result', 'messages', 'custom_field']",
+            ),
+        ):
+            result_manager.sort(["bad_field"])
 
     def test_sort_is_chainable(self) -> None:
         """Test that the sort method is chainable."""
         result_manager = ResultManager()
         assert isinstance(result_manager.sort(["name"]), ResultManager)
-
-    def test_merge_result_manager(self) -> None:
-        """Test the merge_results function."""
-        result = ResultManager()
-        final_merged_results = ResultManager.merge_results([result])
-        assert isinstance(final_merged_results, ResultManager)
-
-    def test_merge_two_result_managers(self, test_result_factory: Callable[[], TestResult]) -> None:
-        """Test merging two non-empty ResultManager instances."""
-        rm1 = ResultManager()
-        test1_rm1 = test_result_factory()
-        test1_rm1.name = "device1"
-        rm1.add(test1_rm1)
-        test2_rm1 = test_result_factory()
-        test2_rm1.name = "device2"
-        rm1.add(test2_rm1)
-
-        rm2 = ResultManager()
-        test1_rm2 = test_result_factory()
-        test1_rm2.name = "device3"
-        rm2.add(test1_rm2)
-
-        merged_rm = ResultManager.merge_results([rm1, rm2])
-        assert len(merged_rm) == 3
-        assert {r.name for r in merged_rm.results} == {"device1", "device2", "device3"}
-
-    def test_merge_empty_list(self) -> None:
-        """Test merging an empty list of ResultManager instances."""
-        merged_rm = ResultManager.merge_results([])
-        assert isinstance(merged_rm, ResultManager)
-        assert len(merged_rm) == 0

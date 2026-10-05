@@ -1,10 +1,10 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Module related to the EOS various AAA tests."""
 
-# Pyright does not understand AntaTest.Input typing
-# pyright: reportAttributeAccessIssue=false
+# Mypy does not understand AntaTest.Input typing
+# mypy: disable-error-code=attr-defined
 from __future__ import annotations
 
 from ipaddress import IPv4Address
@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, ClassVar, Literal
 
 from anta.custom_types import AAAAuthMethod
 from anta.models import AntaCommand, AntaTest
-from anta.tools import get_value
 
 if TYPE_CHECKING:
     from anta.models import AntaTemplate
@@ -52,12 +51,12 @@ class VerifyTacacsSourceIntf(AntaTest):
         """Main test function for VerifyTacacsSourceIntf."""
         command_output = self.instance_commands[0].json_output
         try:
-            if (src_interface := command_output["srcIntf"][self.inputs.vrf]) == self.inputs.intf:
+            if command_output["srcIntf"][self.inputs.vrf] == self.inputs.intf:
                 self.result.is_success()
             else:
-                self.result.is_failure(f"VRF: {self.inputs.vrf} - Source interface mismatch - Expected: {self.inputs.intf} Actual: {src_interface}")
+                self.result.is_failure(f"Wrong source-interface configured in VRF {self.inputs.vrf}")
         except KeyError:
-            self.result.is_failure(f"VRF: {self.inputs.vrf} Source Interface: {self.inputs.intf} - Not configured")
+            self.result.is_failure(f"Source-interface {self.inputs.intf} is not configured in VRF {self.inputs.vrf}")
 
 
 class VerifyTacacsServers(AntaTest):
@@ -103,14 +102,13 @@ class VerifyTacacsServers(AntaTest):
             str(server)
             for server in self.inputs.servers
             if not any(
-                str(server) == get_value(tacacs_server, "serverInfo.hostname") and self.inputs.vrf == get_value(tacacs_server, "serverInfo.vrf", default="default")
-                for tacacs_server in tacacs_servers
+                str(server) == tacacs_server["serverInfo"]["hostname"] and self.inputs.vrf == tacacs_server["serverInfo"]["vrf"] for tacacs_server in tacacs_servers
             )
         ]
         if not not_configured:
             self.result.is_success()
         else:
-            self.result.is_failure(f"TACACS servers {', '.join(not_configured)} are not configured in VRF {self.inputs.vrf}")
+            self.result.is_failure(f"TACACS servers {not_configured} are not configured in VRF {self.inputs.vrf}")
 
 
 class VerifyTacacsServerGroups(AntaTest):
@@ -153,16 +151,11 @@ class VerifyTacacsServerGroups(AntaTest):
         if not not_configured:
             self.result.is_success()
         else:
-            self.result.is_failure(f"TACACS server group(s) {', '.join(not_configured)} are not configured")
+            self.result.is_failure(f"TACACS server group(s) {not_configured} are not configured")
 
 
 class VerifyAuthenMethods(AntaTest):
     """Verifies the AAA authentication method lists for different authentication types (login, enable, dot1x).
-
-    !!! warning
-        This test expects all method lists for a selected authentication type to use the same configured methods.
-        For example, when `login` is selected, every method list under `loginAuthenMethods` must match the expected methods.
-        This means the test cannot validate different expected methods per method-list name.
 
     Expected Results
     ----------------
@@ -192,14 +185,13 @@ class VerifyAuthenMethods(AntaTest):
         """Input model for the VerifyAuthenMethods test."""
 
         methods: list[AAAAuthMethod]
-        """List of expected AAA authentication methods."""
+        """List of AAA authentication methods. Methods should be in the right order."""
         types: set[Literal["login", "enable", "dot1x"]]
         """List of authentication types to verify."""
 
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyAuthenMethods."""
-        self.result.is_success()
         command_output = self.instance_commands[0].json_output
         not_matching: list[str] = []
         for k, v in command_output.items():
@@ -207,20 +199,19 @@ class VerifyAuthenMethods(AntaTest):
             if auth_type not in self.inputs.types:
                 # We do not need to verify this accounting type
                 continue
-            # Starting with EOS 4.36, the login method list for console authentication is named console.
             if auth_type == "login":
-                auth_details = v.get("console", v.get("login"))
-                if auth_details is None:
+                if "login" not in v:
                     self.result.is_failure("AAA authentication methods are not configured for login console")
-                    continue
-                if sorted(auth_details["methods"]) != sorted(self.inputs.methods):
-                    self.result.is_failure(f"AAA authentication methods {', '.join(self.inputs.methods)} are not matching for login console")
-                    continue
-            if any(sorted(methods["methods"]) != sorted(self.inputs.methods) for methods in v.values()):
-                not_matching.append(auth_type)
+                    return
+                if v["login"]["methods"] != self.inputs.methods:
+                    self.result.is_failure(f"AAA authentication methods {self.inputs.methods} are not matching for login console")
+                    return
+            not_matching.extend(auth_type for methods in v.values() if methods["methods"] != self.inputs.methods)
 
-        if not_matching:
-            self.result.is_failure(f"AAA authentication methods {', '.join(self.inputs.methods)} are not matching for {', '.join(not_matching)}")
+        if not not_matching:
+            self.result.is_success()
+        else:
+            self.result.is_failure(f"AAA authentication methods {self.inputs.methods} are not matching for {not_matching}")
 
 
 class VerifyAuthzMethods(AntaTest):
@@ -253,7 +244,7 @@ class VerifyAuthzMethods(AntaTest):
         """Input model for the VerifyAuthzMethods test."""
 
         methods: list[AAAAuthMethod]
-        """List of expected AAA authorization methods."""
+        """List of AAA authorization methods. Methods should be in the right order."""
         types: set[Literal["commands", "exec"]]
         """List of authorization types to verify."""
 
@@ -267,12 +258,12 @@ class VerifyAuthzMethods(AntaTest):
             if authz_type not in self.inputs.types:
                 # We do not need to verify this accounting type
                 continue
-            not_matching.extend(authz_type for methods in v.values() if sorted(methods["methods"]) != sorted(self.inputs.methods))
+            not_matching.extend(authz_type for methods in v.values() if methods["methods"] != self.inputs.methods)
 
         if not not_matching:
             self.result.is_success()
         else:
-            self.result.is_failure(f"AAA authorization methods {', '.join(self.inputs.methods)} are not matching for {', '.join(not_matching)}")
+            self.result.is_failure(f"AAA authorization methods {self.inputs.methods} are not matching for {not_matching}")
 
 
 class VerifyAcctDefaultMethods(AntaTest):
@@ -307,7 +298,7 @@ class VerifyAcctDefaultMethods(AntaTest):
         """Input model for the VerifyAcctDefaultMethods test."""
 
         methods: list[AAAAuthMethod]
-        """List of expected AAA accounting methods."""
+        """List of AAA accounting methods. Methods should be in the right order."""
         types: set[Literal["commands", "exec", "system", "dot1x"]]
         """List of accounting types to verify."""
 
@@ -325,15 +316,15 @@ class VerifyAcctDefaultMethods(AntaTest):
             for methods in v.values():
                 if "defaultAction" not in methods:
                     not_configured.append(acct_type)
-                if sorted(methods["defaultMethods"]) != sorted(self.inputs.methods):
+                if methods["defaultMethods"] != self.inputs.methods:
                     not_matching.append(acct_type)
         if not_configured:
-            self.result.is_failure(f"AAA default accounting is not configured for {', '.join(not_configured)}")
+            self.result.is_failure(f"AAA default accounting is not configured for {not_configured}")
             return
         if not not_matching:
             self.result.is_success()
         else:
-            self.result.is_failure(f"AAA accounting default methods {', '.join(self.inputs.methods)} are not matching for {', '.join(not_matching)}")
+            self.result.is_failure(f"AAA accounting default methods {self.inputs.methods} are not matching for {not_matching}")
 
 
 class VerifyAcctConsoleMethods(AntaTest):
@@ -368,7 +359,7 @@ class VerifyAcctConsoleMethods(AntaTest):
         """Input model for the VerifyAcctConsoleMethods test."""
 
         methods: list[AAAAuthMethod]
-        """List of expected AAA accounting console methods."""
+        """List of AAA accounting console methods. Methods should be in the right order."""
         types: set[Literal["commands", "exec", "system", "dot1x"]]
         """List of accounting console types to verify."""
 
@@ -386,12 +377,12 @@ class VerifyAcctConsoleMethods(AntaTest):
             for methods in v.values():
                 if "consoleAction" not in methods:
                     not_configured.append(acct_type)
-                if sorted(methods["consoleMethods"]) != sorted(self.inputs.methods):
+                if methods["consoleMethods"] != self.inputs.methods:
                     not_matching.append(acct_type)
         if not_configured:
-            self.result.is_failure(f"AAA console accounting is not configured for {', '.join(not_configured)}")
+            self.result.is_failure(f"AAA console accounting is not configured for {not_configured}")
             return
         if not not_matching:
             self.result.is_success()
         else:
-            self.result.is_failure(f"AAA accounting console methods {', '.join(self.inputs.methods)} are not matching for {', '.join(not_matching)}")
+            self.result.is_failure(f"AAA accounting console methods {self.inputs.methods} are not matching for {not_matching}")

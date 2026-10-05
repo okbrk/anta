@@ -1,4 +1,4 @@
-ARG PYTHON_VER=3.10
+ARG PYTHON_VER=3.9
 ARG IMG_OPTION=alpine
 
 ### BUILDER
@@ -38,7 +38,7 @@ LABEL   "org.opencontainers.image.title"="anta" \
         "org.opencontainers.artifact.description"="network-test-automation in a Python package and Python scripts to test Arista devices." \
         "org.opencontainers.image.description"="network-test-automation in a Python package and Python scripts to test Arista devices." \
         "org.opencontainers.image.source"="https://github.com/aristanetworks/anta" \
-        "org.opencontainers.image.url"="https://anta.arista.com" \
+        "org.opencontainers.image.url"="https://www.anta.ninja" \
         "org.opencontainers.image.documentation"="https://anta.arista.com" \
         "org.opencontainers.image.licenses"="Apache-2.0" \
         "org.opencontainers.image.vendor"="Arista Networks" \

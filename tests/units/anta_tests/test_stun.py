@@ -1,28 +1,52 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Test inputs for anta.tests.stun.py."""
 
 from __future__ import annotations
 
-import sys
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from anta.models import AntaTest
-from anta.result_manager.models import AntaTestStatus
 from anta.tests.stun import VerifyStunClientTranslation, VerifyStunServer
 from tests.units.anta_tests import test
 
-if TYPE_CHECKING:
-    from tests.units.anta_tests import AntaUnitTestData
-
-DATA: AntaUnitTestData = {
-    (VerifyStunClientTranslation, "success"): {
+DATA: list[dict[str, Any]] = [
+    {
+        "name": "success",
+        "test": VerifyStunClientTranslation,
         "eos_data": [
-            {"bindings": {"000000010a64ff0100000000": {"sourceAddress": {"ip": "100.64.3.2", "port": 4500}, "publicAddress": {"ip": "192.64.3.2", "port": 6006}}}},
-            {"bindings": {"000000040a64ff0100000000": {"sourceAddress": {"ip": "172.18.3.2", "port": 4500}, "publicAddress": {"ip": "192.18.3.2", "port": 6006}}}},
-            {"bindings": {"000000040a64ff0100000000": {"sourceAddress": {"ip": "172.18.4.2", "port": 4500}, "publicAddress": {"ip": "192.18.4.2", "port": 6006}}}},
-            {"bindings": {"000000040a64ff0100000000": {"sourceAddress": {"ip": "172.18.6.2", "port": 4500}, "publicAddress": {"ip": "192.18.6.2", "port": 6006}}}},
+            {
+                "bindings": {
+                    "000000010a64ff0100000000": {
+                        "sourceAddress": {"ip": "100.64.3.2", "port": 4500},
+                        "publicAddress": {"ip": "192.64.3.2", "port": 6006},
+                    }
+                }
+            },
+            {
+                "bindings": {
+                    "000000040a64ff0100000000": {
+                        "sourceAddress": {"ip": "172.18.3.2", "port": 4500},
+                        "publicAddress": {"ip": "192.18.3.2", "port": 6006},
+                    }
+                }
+            },
+            {
+                "bindings": {
+                    "000000040a64ff0100000000": {
+                        "sourceAddress": {"ip": "172.18.4.2", "port": 4500},
+                        "publicAddress": {"ip": "192.18.4.2", "port": 6006},
+                    }
+                }
+            },
+            {
+                "bindings": {
+                    "000000040a64ff0100000000": {
+                        "sourceAddress": {"ip": "172.18.6.2", "port": 4500},
+                        "publicAddress": {"ip": "192.18.6.2", "port": 6006},
+                    }
+                }
+            },
         ],
         "inputs": {
             "stun_clients": [
@@ -32,12 +56,28 @@ DATA: AntaUnitTestData = {
                 {"source_address": "172.18.6.2", "source_port": 4500, "public_port": 6006},
             ]
         },
-        "expected": {"result": AntaTestStatus.SUCCESS},
+        "expected": {"result": "success"},
     },
-    (VerifyStunClientTranslation, "failure-incorrect-public-ip"): {
+    {
+        "name": "failure-incorrect-public-ip",
+        "test": VerifyStunClientTranslation,
         "eos_data": [
-            {"bindings": {"000000010a64ff0100000000": {"sourceAddress": {"ip": "100.64.3.2", "port": 4500}, "publicAddress": {"ip": "192.64.3.2", "port": 6006}}}},
-            {"bindings": {"000000040a64ff0100000000": {"sourceAddress": {"ip": "172.18.3.2", "port": 4500}, "publicAddress": {"ip": "192.18.3.2", "port": 6006}}}},
+            {
+                "bindings": {
+                    "000000010a64ff0100000000": {
+                        "sourceAddress": {"ip": "100.64.3.2", "port": 4500},
+                        "publicAddress": {"ip": "192.64.3.2", "port": 6006},
+                    }
+                }
+            },
+            {
+                "bindings": {
+                    "000000040a64ff0100000000": {
+                        "sourceAddress": {"ip": "172.18.3.2", "port": 4500},
+                        "publicAddress": {"ip": "192.18.3.2", "port": 6006},
+                    }
+                }
+            },
         ],
         "inputs": {
             "stun_clients": [
@@ -46,30 +86,19 @@ DATA: AntaUnitTestData = {
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
                 "Client 100.64.3.2 Port: 4500 - Incorrect public-facing address - Expected: 192.164.3.2 Actual: 192.64.3.2",
                 "Client 172.18.3.2 Port: 4500 - Incorrect public-facing address - Expected: 192.118.3.2 Actual: 192.18.3.2",
             ],
         },
     },
-    (VerifyStunClientTranslation, "failure-no-client"): {
-        "eos_data": [{"bindings": {}}, {"bindings": {}}],
-        "inputs": {
-            "stun_clients": [
-                {"source_address": "100.64.3.2", "public_address": "192.164.3.2", "source_port": 4500, "public_port": 6006},
-                {"source_address": "172.18.3.2", "public_address": "192.118.3.2", "source_port": 4500, "public_port": 6006},
-            ]
-        },
-        "expected": {
-            "result": AntaTestStatus.FAILURE,
-            "messages": ["Client 100.64.3.2 Port: 4500 - STUN client translation not found", "Client 172.18.3.2 Port: 4500 - STUN client translation not found"],
-        },
-    },
-    (VerifyStunClientTranslation, "failure-incorrect-public-port"): {
+    {
+        "name": "failure-no-client",
+        "test": VerifyStunClientTranslation,
         "eos_data": [
             {"bindings": {}},
-            {"bindings": {"000000040a64ff0100000000": {"sourceAddress": {"ip": "172.18.3.2", "port": 4500}, "publicAddress": {"ip": "192.18.3.2", "port": 4800}}}},
+            {"bindings": {}},
         ],
         "inputs": {
             "stun_clients": [
@@ -78,18 +107,52 @@ DATA: AntaUnitTestData = {
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
+            "messages": ["Client 100.64.3.2 Port: 4500 - STUN client translation not found.", "Client 172.18.3.2 Port: 4500 - STUN client translation not found."],
+        },
+    },
+    {
+        "name": "failure-incorrect-public-port",
+        "test": VerifyStunClientTranslation,
+        "eos_data": [
+            {"bindings": {}},
+            {
+                "bindings": {
+                    "000000040a64ff0100000000": {
+                        "sourceAddress": {"ip": "172.18.3.2", "port": 4500},
+                        "publicAddress": {"ip": "192.18.3.2", "port": 4800},
+                    }
+                }
+            },
+        ],
+        "inputs": {
+            "stun_clients": [
+                {"source_address": "100.64.3.2", "public_address": "192.164.3.2", "source_port": 4500, "public_port": 6006},
+                {"source_address": "172.18.3.2", "public_address": "192.118.3.2", "source_port": 4500, "public_port": 6006},
+            ]
+        },
+        "expected": {
+            "result": "failure",
             "messages": [
-                "Client 100.64.3.2 Port: 4500 - STUN client translation not found",
+                "Client 100.64.3.2 Port: 4500 - STUN client translation not found.",
                 "Client 172.18.3.2 Port: 4500 - Incorrect public-facing address - Expected: 192.118.3.2 Actual: 192.18.3.2",
                 "Client 172.18.3.2 Port: 4500 - Incorrect public-facing port - Expected: 6006 Actual: 4800",
             ],
         },
     },
-    (VerifyStunClientTranslation, "failure-all-type"): {
+    {
+        "name": "failure-all-type",
+        "test": VerifyStunClientTranslation,
         "eos_data": [
             {"bindings": {}},
-            {"bindings": {"000000040a64ff0100000000": {"sourceAddress": {"ip": "172.18.3.2", "port": 4500}, "publicAddress": {"ip": "192.18.3.2", "port": 4800}}}},
+            {
+                "bindings": {
+                    "000000040a64ff0100000000": {
+                        "sourceAddress": {"ip": "172.18.3.2", "port": 4500},
+                        "publicAddress": {"ip": "192.18.3.2", "port": 4800},
+                    }
+                }
+            },
         ],
         "inputs": {
             "stun_clients": [
@@ -98,28 +161,69 @@ DATA: AntaUnitTestData = {
             ]
         },
         "expected": {
-            "result": AntaTestStatus.FAILURE,
+            "result": "failure",
             "messages": [
-                "Client 100.64.3.2 Port: 4500 - STUN client translation not found",
+                "Client 100.64.3.2 Port: 4500 - STUN client translation not found.",
                 "Client 172.18.4.2 Port: 4800 - Incorrect public-facing address - Expected: 192.118.3.2 Actual: 192.18.3.2",
                 "Client 172.18.4.2 Port: 4800 - Incorrect public-facing port - Expected: 6006 Actual: 4800",
             ],
         },
     },
-    (VerifyStunServer, "success"): {"eos_data": [{"enabled": True, "pid": 1895}], "inputs": {}, "expected": {"result": AntaTestStatus.SUCCESS}},
-    (VerifyStunServer, "failure-disabled"): {
-        "eos_data": [{"enabled": False, "pid": 1895}],
+    {
+        "name": "success",
+        "test": VerifyStunServer,
+        "eos_data": [
+            {
+                "enabled": True,
+                "pid": 1895,
+            }
+        ],
         "inputs": {},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["STUN server status is disabled"]},
+        "expected": {"result": "success"},
     },
-    (VerifyStunServer, "failure-not-running"): {
-        "eos_data": [{"enabled": True, "pid": 0}],
+    {
+        "name": "failure-disabled",
+        "test": VerifyStunServer,
+        "eos_data": [
+            {
+                "enabled": False,
+                "pid": 1895,
+            }
+        ],
         "inputs": {},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["STUN server is not running"]},
+        "expected": {
+            "result": "failure",
+            "messages": ["STUN server status is disabled."],
+        },
     },
-    (VerifyStunServer, "failure-not-running-disabled"): {
-        "eos_data": [{"enabled": False, "pid": 0}],
+    {
+        "name": "failure-not-running",
+        "test": VerifyStunServer,
+        "eos_data": [
+            {
+                "enabled": True,
+                "pid": 0,
+            }
+        ],
         "inputs": {},
-        "expected": {"result": AntaTestStatus.FAILURE, "messages": ["STUN server status is disabled and not running"]},
+        "expected": {
+            "result": "failure",
+            "messages": ["STUN server is not running."],
+        },
     },
-}
+    {
+        "name": "failure-not-running-disabled",
+        "test": VerifyStunServer,
+        "eos_data": [
+            {
+                "enabled": False,
+                "pid": 0,
+            }
+        ],
+        "inputs": {},
+        "expected": {
+            "result": "failure",
+            "messages": ["STUN server status is disabled and not running."],
+        },
+    },
+]

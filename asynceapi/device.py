@@ -1,4 +1,4 @@
-# Copyright (c) 2024-2026 Arista Networks, Inc.
+# Copyright (c) 2024-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 # Initially written by Jeremy Schulman at https://github.com/jeremyschulman/aio-eapi
@@ -9,51 +9,30 @@
 
 from __future__ import annotations
 
-from ipaddress import IPv6Address, ip_address
-from logging import getLogger
 from socket import getservbyname
-from typing import TYPE_CHECKING, Any, Literal, overload
+from typing import TYPE_CHECKING, Any
 
 # -----------------------------------------------------------------------------
 # Public Imports
 # -----------------------------------------------------------------------------
 import httpx
-from typing_extensions import deprecated
-
-from ._auth import EapiSessionAuth
 
 # -----------------------------------------------------------------------------
 # Private Imports
 # -----------------------------------------------------------------------------
-from ._constants import EAPI_CONNECTIVITY_TIMEOUT, EapiCommandFormat
 from .aio_portcheck import port_check_url
 from .config_session import SessionConfig
 from .errors import EapiCommandError
 
 if TYPE_CHECKING:
-    from types import TracebackType
-
-    from ._types import EapiComplexCommand, EapiJsonOutput, EapiSimpleCommand, EapiTextOutput, JsonRpc
+    from collections.abc import Sequence
 
 # -----------------------------------------------------------------------------
 # Exports
 # -----------------------------------------------------------------------------
 
-LOGGER = getLogger(__name__)
+
 __all__ = ["Device"]
-
-
-def _format_url_host(host: str | None) -> str | None:
-    """Wrap IPv6 literals for use in a URL authority."""
-    if host is None or host.startswith("["):
-        return host
-    try:
-        address = ip_address(host)
-    except ValueError:
-        return host
-    if isinstance(address, IPv6Address):
-        return f"[{host}]"
-    return host
 
 
 # -----------------------------------------------------------------------------
@@ -70,11 +49,9 @@ class Device(httpx.AsyncClient):
     httpx.AsyncClient, so any initialization options can be passed directly.
     """
 
-    EAPI_COMMAND_API_URL = "/command-api"
+    auth = None
     EAPI_OFMT_OPTIONS = ("json", "text")
     EAPI_DEFAULT_OFMT = "json"
-    EAPI_LOGIN_URL = "/login"
-    EAPI_LOGOUT_URL = "/logout"
 
     def __init__(
         self,
@@ -83,8 +60,6 @@ class Device(httpx.AsyncClient):
         password: str | None = None,
         proto: str = "https",
         port: str | int | None = None,
-        *,
-        use_session_auth: bool = False,
         **kwargs: Any,  # noqa: ANN401
     ) -> None:
         """Initialize the Device class.
@@ -105,10 +80,7 @@ class Device(httpx.AsyncClient):
         port
             If not provided, the proto value is used to look up the associated
                   port (http=80, https=443). If provided, overrides the port used to
-                  communicate with the device.
-        use_session_auth
-            When True, authenticate via eAPI cookie session (POST /login) instead
-            of HTTP Basic Auth on every request. Requires ``username``, ``password``, and ``host``.
+                  communite with the device.
         kwargs
             Other named keyword arguments, some of them are being used in the function
             cf Other Parameters section below, others are just passed as is to the httpx.AsyncClient.
@@ -119,42 +91,23 @@ class Device(httpx.AsyncClient):
             If provided, the complete URL to the device eAPI endpoint.
 
         auth :
-            If provided, used as the httpx authentication initializer value. If
+            If provided, used as the httpx authorization initializer value. If
             not provided, then username+password is assumed by the Caller and
-            used to create a BasicAuth instance or an EapiSessionAuth if ``use_session_auth`` is True.
+            used to create a BasicAuth instance.
         """
         self.port = port or getservbyname(proto)
         self.host = host
-        self._use_session_auth = use_session_auth
-        self._session_auth: EapiSessionAuth | None = None
-        url_host = _format_url_host(self.host)
-        if "base_url" not in kwargs:
-            if self.host is None:
-                msg = "host is required when base_url is not provided"
-                raise ValueError(msg)
-            kwargs["base_url"] = httpx.URL(f"{proto}://{url_host}:{self.port}")
+        kwargs.setdefault("base_url", httpx.URL(f"{proto}://{self.host}:{self.port}"))
         kwargs.setdefault("verify", False)
-        if self._use_session_auth:
-            if not (username and password):
-                msg = "username and password are required for session authentication"
-                raise ValueError(msg)
-            if not self.host:
-                msg = "host is required for session authentication"
-                raise ValueError(msg)
-            login_url = f"{proto}://{url_host}:{self.port}{self.EAPI_LOGIN_URL}"
-            self._session_auth = EapiSessionAuth(host=self.host, username=username, password=password, login_url=login_url)
-            kwargs.setdefault("auth", self._session_auth)
-            LOGGER.debug("Device %s: eAPI session-based authentication enabled", self.host)
-        else:
-            auth_object = httpx.BasicAuth(username, password) if username and password else None
-            kwargs.setdefault("auth", auth_object)
-            if auth_object is not None:
-                LOGGER.debug("Device %s: using HTTP basic authentication", self.host)
+
+        if username and password:
+            self.auth = httpx.BasicAuth(username, password)
+
+        kwargs.setdefault("auth", self.auth)
 
         super().__init__(**kwargs)
         self.headers["Content-Type"] = "application/json-rpc"
 
-    @deprecated("This method is deprecated, use `Device.check_api_endpoint` method instead. This will be removed in ANTA v2.0.0.", category=DeprecationWarning)
     async def check_connection(self) -> bool:
         """Check the target device to ensure that the eAPI port is open and accepting connections.
 
@@ -168,155 +121,18 @@ class Device(httpx.AsyncClient):
         """
         return await port_check_url(self.base_url)
 
-    async def check_api_endpoint(self) -> bool:
-        """Check the target device eAPI HTTP endpoint with a HEAD request.
-
-        It is recommended that a Caller checks the connection before involving cli commands,
-        but this step is not required.
-
-        Returns
-        -------
-        bool
-            True when the device eAPI HTTP endpoint is accessible (2xx status code),
-            otherwise an HTTPStatusError exception is raised.
-        """
-        response = await self.head(self.EAPI_COMMAND_API_URL, timeout=EAPI_CONNECTIVITY_TIMEOUT)
-        response.raise_for_status()
-        return True
-
-    # Single command, JSON output, no suppression
-    @overload
     async def cli(
         self,
-        *,
-        command: EapiSimpleCommand | EapiComplexCommand,
-        commands: None = None,
-        ofmt: Literal["json"] = "json",
-        version: int | Literal["latest"] = "latest",
-        suppress_error: Literal[False] = False,
-        auto_complete: bool = False,
-        expand_aliases: bool = False,
-        req_id: int | str | None = None,
-    ) -> EapiJsonOutput: ...
-
-    # Multiple commands, JSON output, no suppression
-    @overload
-    async def cli(
-        self,
-        *,
-        command: None = None,
-        commands: list[EapiSimpleCommand | EapiComplexCommand],
-        ofmt: Literal["json"] = "json",
-        version: int | Literal["latest"] = "latest",
-        suppress_error: Literal[False] = False,
-        auto_complete: bool = False,
-        expand_aliases: bool = False,
-        req_id: int | str | None = None,
-    ) -> list[EapiJsonOutput]: ...
-
-    # Single command, TEXT output, no suppression
-    @overload
-    async def cli(
-        self,
-        *,
-        command: EapiSimpleCommand | EapiComplexCommand,
-        commands: None = None,
-        ofmt: Literal["text"],
-        version: int | Literal["latest"] = "latest",
-        suppress_error: Literal[False] = False,
-        auto_complete: bool = False,
-        expand_aliases: bool = False,
-        req_id: int | str | None = None,
-    ) -> EapiTextOutput: ...
-
-    # Multiple commands, TEXT output, no suppression
-    @overload
-    async def cli(
-        self,
-        *,
-        command: None = None,
-        commands: list[EapiSimpleCommand | EapiComplexCommand],
-        ofmt: Literal["text"],
-        version: int | Literal["latest"] = "latest",
-        suppress_error: Literal[False] = False,
-        auto_complete: bool = False,
-        expand_aliases: bool = False,
-        req_id: int | str | None = None,
-    ) -> list[EapiTextOutput]: ...
-
-    # Single command, JSON output, with suppression
-    @overload
-    async def cli(
-        self,
-        *,
-        command: EapiSimpleCommand | EapiComplexCommand,
-        commands: None = None,
-        ofmt: Literal["json"] = "json",
-        version: int | Literal["latest"] = "latest",
-        suppress_error: Literal[True],
-        auto_complete: bool = False,
-        expand_aliases: bool = False,
-        req_id: int | str | None = None,
-    ) -> EapiJsonOutput | None: ...
-
-    # Multiple commands, JSON output, with suppression
-    @overload
-    async def cli(
-        self,
-        *,
-        command: None = None,
-        commands: list[EapiSimpleCommand | EapiComplexCommand],
-        ofmt: Literal["json"] = "json",
-        version: int | Literal["latest"] = "latest",
-        suppress_error: Literal[True],
-        auto_complete: bool = False,
-        expand_aliases: bool = False,
-        req_id: int | str | None = None,
-    ) -> list[EapiJsonOutput] | None: ...
-
-    # Single command, TEXT output, with suppression
-    @overload
-    async def cli(
-        self,
-        *,
-        command: EapiSimpleCommand | EapiComplexCommand,
-        commands: None = None,
-        ofmt: Literal["text"],
-        version: int | Literal["latest"] = "latest",
-        suppress_error: Literal[True],
-        auto_complete: bool = False,
-        expand_aliases: bool = False,
-        req_id: int | str | None = None,
-    ) -> EapiTextOutput | None: ...
-
-    # Multiple commands, TEXT output, with suppression
-    @overload
-    async def cli(
-        self,
-        *,
-        command: None = None,
-        commands: list[EapiSimpleCommand | EapiComplexCommand],
-        ofmt: Literal["text"],
-        version: int | Literal["latest"] = "latest",
-        suppress_error: Literal[True],
-        auto_complete: bool = False,
-        expand_aliases: bool = False,
-        req_id: int | str | None = None,
-    ) -> list[EapiTextOutput] | None: ...
-
-    # Actual implementation
-    async def cli(
-        self,
-        command: EapiSimpleCommand | EapiComplexCommand | None = None,
-        commands: list[EapiSimpleCommand | EapiComplexCommand] | None = None,
-        ofmt: Literal["json", "text"] = "json",
-        version: int | Literal["latest"] = "latest",
+        command: str | dict[str, Any] | None = None,
+        commands: Sequence[str | dict[str, Any]] | None = None,
+        ofmt: str | None = None,
+        version: int | str | None = "latest",
         *,
         suppress_error: bool = False,
         auto_complete: bool = False,
         expand_aliases: bool = False,
         req_id: int | str | None = None,
-    ) -> EapiJsonOutput | EapiTextOutput | list[EapiJsonOutput] | list[EapiTextOutput] | None:
+    ) -> list[dict[str, Any] | str] | dict[str, Any] | str | None:
         """Execute one or more CLI commands.
 
         Parameters
@@ -327,7 +143,6 @@ class Device(httpx.AsyncClient):
             A list of commands to execute; results in a list of output responses.
         ofmt
             Either 'json' or 'text'; indicates the output format for the CLI commands.
-            eAPI defaults to 'json'.
         version
             By default the eAPI will use "version 1" for all API object models.
             This driver will, by default, always set version to "latest" so
@@ -343,13 +158,13 @@ class Device(httpx.AsyncClient):
 
                 response = dev.cli(..., suppress_error=True)
         auto_complete
-            Enabled/disables the command auto-compelete feature of the eAPI. Per the
+            Enabled/disables the command auto-compelete feature of the EAPI.  Per the
             documentation:
                 Allows users to use shorthand commands in eAPI calls. With this
                 parameter included a user can send 'sh ver' via eAPI to get the
                 output of 'show version'.
         expand_aliases
-            Enables/disables the command use of user-defined alias. Per the
+            Enables/disables the command use of User defined alias.  Per the
             documentation:
                 Allowed users to provide the expandAliases parameter to eAPI
                 calls. This allows users to use aliased commands via the API.
@@ -361,34 +176,15 @@ class Device(httpx.AsyncClient):
 
         Returns
         -------
-        dict[str, Any]
-            Single command, JSON output, suppress_error=False
-        list[dict[str, Any]]
-            Multiple commands, JSON output, suppress_error=False
-        str
-            Single command, TEXT output, suppress_error=False
-        list[str]
-            Multiple commands, TEXT output, suppress_error=False
-        dict[str, Any] | None
-            Single command, JSON output, suppress_error=True
-        list[dict[str, Any]] | None
-            Multiple commands, JSON output, suppress_error=True
-        str | None
-            Single command, TEXT output, suppress_error=True
-        list[str] | None
-            Multiple commands, TEXT output, suppress_error=True
+        list[dict[str, Any] | str] | dict[str, Any] | str | None
+            One or List of output responses, per the description above.
         """
         if not any((command, commands)):
             msg = "Required 'command' or 'commands'"
             raise RuntimeError(msg)
 
         jsonrpc = self._jsonrpc_command(
-            commands=[command] if command else commands or [],
-            ofmt=ofmt,
-            version=version,
-            auto_complete=auto_complete,
-            expand_aliases=expand_aliases,
-            req_id=req_id,
+            commands=[command] if command else commands, ofmt=ofmt, version=version, auto_complete=auto_complete, expand_aliases=expand_aliases, req_id=req_id
         )
 
         try:
@@ -401,14 +197,14 @@ class Device(httpx.AsyncClient):
 
     def _jsonrpc_command(
         self,
-        commands: list[EapiSimpleCommand | EapiComplexCommand],
-        ofmt: Literal["json", "text"] = "json",
-        version: int | Literal["latest"] = "latest",
+        commands: Sequence[str | dict[str, Any]] | None = None,
+        ofmt: str | None = None,
+        version: int | str | None = "latest",
         *,
         auto_complete: bool = False,
         expand_aliases: bool = False,
         req_id: int | str | None = None,
-    ) -> JsonRpc:
+    ) -> dict[str, Any]:
         """Create the JSON-RPC command dictionary object.
 
         Parameters
@@ -417,7 +213,6 @@ class Device(httpx.AsyncClient):
             A list of commands to execute; results in a list of output responses.
         ofmt
             Either 'json' or 'text'; indicates the output format for the CLI commands.
-            eAPI defaults to 'json'.
         version
             By default the eAPI will use "version 1" for all API object models.
             This driver will, by default, always set version to "latest" so
@@ -446,20 +241,25 @@ class Device(httpx.AsyncClient):
             dict containing the JSON payload to run the command.
 
         """
-        return {
+        cmd: dict[str, Any] = {
             "jsonrpc": "2.0",
             "method": "runCmds",
             "params": {
                 "version": version,
                 "cmds": commands,
-                "format": EapiCommandFormat(ofmt),
-                "autoComplete": auto_complete,
-                "expandAliases": expand_aliases,
+                "format": ofmt or self.EAPI_DEFAULT_OFMT,
             },
             "id": req_id or id(self),
         }
+        if auto_complete is not None:
+            cmd["params"].update({"autoComplete": auto_complete})
 
-    async def jsonrpc_exec(self, jsonrpc: JsonRpc) -> list[EapiJsonOutput] | list[EapiTextOutput]:
+        if expand_aliases is not None:
+            cmd["params"].update({"expandAliases": expand_aliases})
+
+        return cmd
+
+    async def jsonrpc_exec(self, jsonrpc: dict[str, Any]) -> list[dict[str, Any] | str]:
         """Execute the JSON-RPC dictionary object.
 
         Parameters
@@ -478,12 +278,12 @@ class Device(httpx.AsyncClient):
             The list of command results; either dict or text depending on the
             JSON-RPC format parameter.
         """
-        res = await self.post(self.EAPI_COMMAND_API_URL, json=jsonrpc)
+        res = await self.post("/command-api", json=jsonrpc)
         res.raise_for_status()
         body = res.json()
 
         commands = jsonrpc["params"]["cmds"]
-        ofmt = jsonrpc["params"].get("format", EapiCommandFormat.JSON)
+        ofmt = jsonrpc["params"]["format"]
 
         get_output = (lambda _r: _r["output"]) if ofmt == "text" else (lambda _r: _r)
 
@@ -515,43 +315,12 @@ class Device(httpx.AsyncClient):
         failed_cmd = commands[err_at]
 
         raise EapiCommandError(
-            passed=[get_output(cmd_data[i]) for i in range(err_at)],
+            passed=[get_output(cmd_data[cmd_i]) for cmd_i, cmd in enumerate(commands[:err_at])],
             failed=failed_cmd["cmd"] if isinstance(failed_cmd, dict) else failed_cmd,
             errors=cmd_data[err_at]["errors"],
             errmsg=err_msg,
             not_exec=commands[err_at + 1 :],
         )
-
-    async def logout(self) -> None:
-        """Log out of the device session and reset local state. No-op if not logged in."""
-        if self._session_auth is None or not self._session_auth.logged_in:
-            return
-        cookie = self._session_auth.session_cookie
-        try:
-            # Best-effort: we don't check the response — if the cookie was expired the session is already gone.
-            await self.post(self.EAPI_LOGOUT_URL, auth=httpx.Auth(), headers={"Cookie": f"Session={cookie}"})
-        except httpx.HTTPError as exc:
-            LOGGER.warning("Logout HTTP error for %s: %s", self.host, exc)
-        finally:
-            await self._session_auth.reset()
-            LOGGER.debug("Session authentication cleared for %s", self.host)
-
-    async def aclose(self) -> None:
-        """Log out and close the underlying HTTPX transport."""
-        if self._use_session_auth:
-            await self.logout()
-        await super().aclose()
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None = None,
-        exc_value: BaseException | None = None,
-        traceback: TracebackType | None = None,
-    ) -> None:
-        """Log out and close on context-manager exit."""
-        if self._use_session_auth:
-            await self.logout()
-        await super().__aexit__(exc_type, exc_value, traceback)
 
     def config_session(self, name: str) -> SessionConfig:
         """Return a SessionConfig instance bound to this device with the given session name.

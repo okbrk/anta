@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """ANTA CLI."""
@@ -6,12 +6,9 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING
+from typing import Callable
 
 from anta import __DEBUG__
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 # Note: need to separate this file from _main to be able to fail on the import.
 try:
@@ -19,20 +16,16 @@ try:
 
 except ImportError as exc:
 
-    def build_cli(exception: ImportError) -> Callable[[], None]:
+    def build_cli(exception: Exception) -> Callable[[], None]:
         """Build CLI function using the caught exception."""
 
         def wrap() -> None:
             """Error message if any CLI dependency is missing."""
-            if not exception.name or "click" not in exception.name:
-                raise exception
-
-            msg = (
+            print(
                 "The ANTA command line client could not run because the required "
                 "dependencies were not installed.\nMake sure you've installed "
                 "everything with: pip install 'anta[cli]'"
             )
-            print(msg)
             if __DEBUG__:
                 print(f"The caught exception was: {exception}")
 

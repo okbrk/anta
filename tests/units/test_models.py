@@ -1,10 +1,10 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """test anta.models.py."""
 
-# Pyright does not understand AntaTest.Input typing
-# pyright: reportAttributeAccessIssue=false
+# Mypy does not understand AntaTest.Input typing
+# mypy: disable-error-code=attr-defined
 from __future__ import annotations
 
 import asyncio
@@ -16,6 +16,7 @@ import pytest
 from anta.decorators import deprecated_test, skip_on_platforms
 from anta.models import AntaCommand, AntaTemplate, AntaTest
 from anta.result_manager.models import AntaTestStatus
+from tests.units.anta_tests.conftest import build_test_id
 from tests.units.conftest import DEVICE_HW_MODEL
 
 if TYPE_CHECKING:
@@ -297,51 +298,82 @@ class FakeTestWithMissingTest(AntaTest):
     commands: ClassVar[list[AntaCommand | AntaTemplate]] = []
 
 
-class FakeTestWithInputNoDefault(AntaTest):
-    """ANTA test with inputs that require fields."""
-
-    categories: ClassVar[list[str]] = []
-    commands: ClassVar[list[AntaCommand | AntaTemplate]] = []
-
-    class Input(AntaTest.Input):
-        """Inputs for FakeTestWithInputNoDefault test."""
-
-        value: str
-
-    @AntaTest.anta_test
-    def test(self) -> None:
-        """Test function."""
-        self.result.is_success()
-
-
-ANTATEST_DATA: dict[tuple[type[AntaTest], str], Any] = {
-    (FakeTest, "no input"): {"inputs": None, "expected": {"__init__": {"result": "unset"}, "test": {"result": "success"}}},
-    (FakeTest, "Input instance with no fields"): {
-        "inputs": FakeTest.Input(),
+ANTATEST_DATA: list[dict[str, Any]] = [
+    {
+        "name": "no input",
+        "test": FakeTest,
+        "inputs": None,
         "expected": {"__init__": {"result": "unset"}, "test": {"result": "success"}},
     },
-    (FakeTest, "extra input"): {
+    {
+        "name": "extra input",
+        "test": FakeTest,
         "inputs": {"string": "culpa! veniam quas quas veniam molestias, esse"},
-        "expected": {"__init__": {"result": "error", "messages": ["Extra inputs are not permitted"]}, "test": {"result": "error"}},
+        "expected": {
+            "__init__": {
+                "result": "error",
+                "messages": ["Extra inputs are not permitted"],
+            },
+            "test": {"result": "error"},
+        },
     },
-    (FakeTestWithInput, "no input"): {"inputs": None, "expected": {"__init__": {"result": "error", "messages": ["Field required"]}, "test": {"result": "error"}}},
-    (FakeTestWithInput, "wrong input type"): {
+    {
+        "name": "no input",
+        "test": FakeTestWithInput,
+        "inputs": None,
+        "expected": {
+            "__init__": {"result": "error", "messages": ["Field required"]},
+            "test": {"result": "error"},
+        },
+    },
+    {
+        "name": "wrong input type",
+        "test": FakeTestWithInput,
         "inputs": {"string": 1},
-        "expected": {"__init__": {"result": "error", "messages": ["Input should be a valid string"]}, "test": {"result": "error"}},
+        "expected": {
+            "__init__": {
+                "result": "error",
+                "messages": ["Input should be a valid string"],
+            },
+            "test": {"result": "error"},
+        },
     },
-    (FakeTestWithInput, "good input"): {
+    {
+        "name": "good input",
+        "test": FakeTestWithInput,
         "inputs": {"string": "culpa! veniam quas quas veniam molestias, esse"},
-        "expected": {"__init__": {"result": "unset"}, "test": {"result": "success", "messages": ["culpa! veniam quas quas veniam molestias, esse"]}},
+        "expected": {
+            "__init__": {"result": "unset"},
+            "test": {
+                "result": "success",
+                "messages": ["culpa! veniam quas quas veniam molestias, esse"],
+            },
+        },
     },
-    (FakeTestWithTemplate, "good input"): {
+    {
+        "name": "good input",
+        "test": FakeTestWithTemplate,
         "inputs": {"interface": "Ethernet1"},
-        "expected": {"__init__": {"result": "unset"}, "test": {"result": "success", "messages": ["show interface Ethernet1"]}},
+        "expected": {
+            "__init__": {"result": "unset"},
+            "test": {"result": "success", "messages": ["show interface Ethernet1"]},
+        },
     },
-    (FakeTestWithTemplate, "wrong input type"): {
+    {
+        "name": "wrong input type",
+        "test": FakeTestWithTemplate,
         "inputs": {"interface": 1},
-        "expected": {"__init__": {"result": "error", "messages": ["Input should be a valid string"]}, "test": {"result": "error"}},
+        "expected": {
+            "__init__": {
+                "result": "error",
+                "messages": ["Input should be a valid string"],
+            },
+            "test": {"result": "error"},
+        },
     },
-    (FakeTestWithTemplateNoRender, "wrong render definition"): {
+    {
+        "name": "wrong render definition",
+        "test": FakeTestWithTemplateNoRender,
         "inputs": {"interface": "Ethernet1"},
         "expected": {
             "__init__": {
@@ -351,7 +383,9 @@ ANTATEST_DATA: dict[tuple[type[AntaTest], str], Any] = {
             "test": {"result": "error"},
         },
     },
-    (FakeTestWithTemplateBadRender1, "AntaTemplateRenderError"): {
+    {
+        "name": "AntaTemplateRenderError",
+        "test": FakeTestWithTemplateBadRender1,
         "inputs": {"interface": "Ethernet1"},
         "expected": {
             "__init__": {
@@ -361,77 +395,127 @@ ANTATEST_DATA: dict[tuple[type[AntaTest], str], Any] = {
             "test": {"result": "error"},
         },
     },
-    (FakeTestWithTemplateBadRender2, "RuntimeError in render()"): {
+    {
+        "name": "RuntimeError in render()",
+        "test": FakeTestWithTemplateBadRender2,
         "inputs": {"interface": "Ethernet1"},
         "expected": {
-            "__init__": {"result": "error", "messages": ["Exception in tests.units.test_models.FakeTestWithTemplateBadRender2.render(): RuntimeError"]},
+            "__init__": {
+                "result": "error",
+                "messages": ["Exception in tests.units.test_models.FakeTestWithTemplateBadRender2.render(): RuntimeError"],
+            },
             "test": {"result": "error"},
         },
     },
-    (FakeTestWithTemplateBadRender3, "Extra template parameters in render()"): {
+    {
+        "name": "Extra template parameters in render()",
+        "test": FakeTestWithTemplateBadRender3,
         "inputs": {"interface": "Ethernet1"},
         "expected": {
             "__init__": {
                 "result": "error",
                 "messages": [
-                    (
-                        "Exception in tests.units.test_models.FakeTestWithTemplateBadRender3.render(): ValidationError: 1 validation error for AntaParams\nextra\n"
-                        "  Extra inputs are not permitted [type=extra_forbidden, input_value='blah', input_type=str]\n"
-                    )
+                    "Exception in tests.units.test_models.FakeTestWithTemplateBadRender3.render(): ValidationError: 1 validation error for AntaParams\n"
+                    "extra\n"
+                    "  Extra inputs are not permitted [type=extra_forbidden, input_value='blah', input_type=str]\n"
                 ],
             },
             "test": {"result": "error"},
         },
     },
-    (FakeTestWithTemplateBadTest, "Access undefined template param in test()"): {
+    {
+        "name": "Access undefined template param in test()",
+        "test": FakeTestWithTemplateBadTest,
         "inputs": {"interface": "Ethernet1"},
         "expected": {
             "__init__": {"result": "unset"},
             "test": {"result": "error", "messages": ["AttributeError: 'AntaParams' object has no attribute 'wrong_template_param'"]},
         },
     },
-    (UnSkipOnPlatformTest, "unskip on platforms"): {"inputs": None, "expected": {"__init__": {"result": "unset"}, "test": {"result": "success"}}},
-    (SkipOnPlatformTest, "skip on platforms, unset"): {"inputs": None, "expected": {"__init__": {"result": "unset"}, "test": {"result": "skipped"}}},
-    (SkipOnPlatformTestWithInput, "skip on platforms, not unset"): {
+    {
+        "name": "unskip on platforms",
+        "test": UnSkipOnPlatformTest,
         "inputs": None,
-        "expected": {"__init__": {"result": "error", "messages": ["Field required"]}, "test": {"result": "error"}},
+        "expected": {
+            "__init__": {"result": "unset"},
+            "test": {"result": "success"},
+        },
     },
-    (DeprecatedTestWithoutNewTest, "deprecate test without new test"): {
+    {
+        "name": "skip on platforms, unset",
+        "test": SkipOnPlatformTest,
         "inputs": None,
-        "expected": {"__init__": {"result": "unset"}, "test": {"result": "success"}},
+        "expected": {
+            "__init__": {"result": "unset"},
+            "test": {"result": "skipped"},
+        },
     },
-    (DeprecatedTestWithNewTest, "deprecate test with new test"): {"inputs": None, "expected": {"__init__": {"result": "unset"}, "test": {"result": "success"}}},
-    (FakeTestWithFailedCommand, "failed command"): {
+    {
+        "name": "skip on platforms, not unset",
+        "test": SkipOnPlatformTestWithInput,
         "inputs": None,
-        "expected": {"__init__": {"result": "unset"}, "test": {"result": "error", "messages": ["show version has failed: failed command"]}},
+        "expected": {
+            "__init__": {"result": "error", "messages": ["Field required"]},
+            "test": {"result": "error"},
+        },
     },
-    (FakeTestWithUnsupportedCommand, "unsupported command"): {
+    {
+        "name": "deprecate test without new test",
+        "test": DeprecatedTestWithoutNewTest,
         "inputs": None,
-        "expected": {"__init__": {"result": "unset"}, "test": {"result": "skipped", "messages": ["'show hardware counter drop' is not supported on pytest"]}},
+        "expected": {
+            "__init__": {"result": "unset"},
+            "test": {"result": "success"},
+        },
     },
-    (FakeTestWithKnownEOSError, "known EOS error command"): {
+    {
+        "name": "deprecate test with new test",
+        "test": DeprecatedTestWithNewTest,
         "inputs": None,
-        "expected": {"__init__": {"result": "unset"}, "test": {"result": "failure", "messages": ["BGP inactive"]}},
+        "expected": {
+            "__init__": {"result": "unset"},
+            "test": {"result": "success"},
+        },
     },
-    (FakeTest, "string inputs"): {
-        "inputs": "invalid string input",
-        "expected": {"__init__": {"result": "error", "messages": ["Input should be a dict, Input instance or None, not str"]}, "test": {"result": "error"}},
+    {
+        "name": "failed command",
+        "test": FakeTestWithFailedCommand,
+        "inputs": None,
+        "expected": {
+            "__init__": {"result": "unset"},
+            "test": {
+                "result": "error",
+                "messages": ["show version has failed: failed command"],
+            },
+        },
     },
-    (FakeTest, "list inputs"): {
-        "inputs": ["invalid", "list", "input"],
-        "expected": {"__init__": {"result": "error", "messages": ["Input should be a dict, Input instance or None, not list"]}, "test": {"result": "error"}},
+    {
+        "name": "unsupported command",
+        "test": FakeTestWithUnsupportedCommand,
+        "inputs": None,
+        "expected": {
+            "__init__": {"result": "unset"},
+            "test": {
+                "result": "skipped",
+                "messages": ["'show hardware counter drop' is not supported on pytest"],
+            },
+        },
     },
-    (FakeTest, "int inputs"): {
-        "inputs": 42,
-        "expected": {"__init__": {"result": "error", "messages": ["Input should be a dict, Input instance or None, not int"]}, "test": {"result": "error"}},
+    {
+        "name": "known EOS error command",
+        "test": FakeTestWithKnownEOSError,
+        "inputs": None,
+        "expected": {
+            "__init__": {"result": "unset"},
+            "test": {
+                "result": "failure",
+                "messages": ["BGP inactive"],
+            },
+        },
     },
-    (FakeTestWithInputNoDefault, "tuple inputs"): {
-        "inputs": ("invalid", "tuple"),
-        "expected": {"__init__": {"result": "error", "messages": ["Input should be a dict, Input instance or None, not tuple"]}, "test": {"result": "error"}},
-    },
-}
+]
 
-BLACKLIST_COMMANDS_PARAMS = ["reload", "reload now", "reload --force", "write", "wr mem", "write memory", "conf t", "configure terminal", "configure session"]
+BLACKLIST_COMMANDS_PARAMS = ["reload", "reload --force", "write", "wr mem"]
 
 
 class TestAntaTest:
@@ -467,7 +551,7 @@ class TestAntaTest:
 
         with pytest.raises(
             AttributeError,
-            match=r"Cannot set the description for class _WrongTestNoDescription, either set it in the class definition or add a docstring to the class.",
+            match="Cannot set the description for class _WrongTestNoDescription, either set it in the class definition or add a docstring to the class.",
         ):
 
             class _WrongTestNoDescription(AntaTest):
@@ -495,17 +579,6 @@ class TestAntaTest:
         assert _TestOverwriteNameAndDescription.name == "CustomName"
         assert _TestOverwriteNameAndDescription.description == "Custom description"
 
-        normalized_description_test = type(
-            "_NormalizedDescriptionTest",
-            (AntaTest,),
-            {
-                "__doc__": "\n        Description on the next line.\n\n            Additional indented details.\n        ",
-                "categories": [],
-                "commands": [],
-            },
-        )
-        assert normalized_description_test.description == "Description on the next line."
-
     def test_abc(self) -> None:
         """Test that an error is raised if AntaTest is not implemented."""
         with pytest.raises(TypeError) as exec_info:
@@ -521,27 +594,21 @@ class TestAntaTest:
         assert test.result.result == expected["result"]
         if "messages" in expected:
             assert len(test.result.messages) == len(expected["messages"])
-            for result_msg, expected_msg in zip(test.result.messages, expected["messages"], strict=True):
+            for result_msg, expected_msg in zip(test.result.messages, expected["messages"]):  # NOTE: zip(strict=True) has been added in Python 3.10
                 assert expected_msg in result_msg
 
-    @pytest.mark.parametrize(
-        "data", ANTATEST_DATA.items(), ids=[f"{anta_test.__module__}.{anta_test.__name__}-{unit_test_name}" for (anta_test, unit_test_name) in ANTATEST_DATA]
-    )
-    def test__init__(self, device: AntaDevice, data: tuple[tuple[type[AntaTest], str], Any]) -> None:
+    @pytest.mark.parametrize("data", ANTATEST_DATA, ids=build_test_id)
+    def test__init__(self, device: AntaDevice, data: dict[str, Any]) -> None:
         """Test the AntaTest constructor."""
-        (anta_test, test_data) = data
-        expected = test_data["expected"]["__init__"]
-        test = anta_test[0](device, inputs=test_data["inputs"])
+        expected = data["expected"]["__init__"]
+        test = data["test"](device, inputs=data["inputs"])
         self._assert_test(test, expected)
 
-    @pytest.mark.parametrize(
-        "data", ANTATEST_DATA.items(), ids=[f"{anta_test.__module__}.{anta_test.__name__}-{unit_test_name}" for (anta_test, unit_test_name) in ANTATEST_DATA]
-    )
-    def test_test(self, device: AntaDevice, data: tuple[tuple[type[AntaTest], str], Any]) -> None:
+    @pytest.mark.parametrize("data", ANTATEST_DATA, ids=build_test_id)
+    def test_test(self, device: AntaDevice, data: dict[str, Any]) -> None:
         """Test the AntaTest.test method."""
-        (anta_test, test_data) = data
-        expected = test_data["expected"]["test"]
-        test = anta_test[0](device, inputs=test_data["inputs"])
+        expected = data["expected"]["test"]
+        test = data["test"](device, inputs=data["inputs"])
         asyncio.run(test.test())
         self._assert_test(test, expected)
 
@@ -565,30 +632,14 @@ class TestAntaTest:
         assert f"<{command}> is blocked for security reason" in test.result.messages
         assert test.instance_commands[0].collected is False
 
-    @pytest.mark.parametrize(
-        ("categories", "description", "custom_field"),
-        [
-            pytest.param(["hardware"], "a description", "a custom field", id="all set"),
-            pytest.param(["hardware"], "a description", None, id="no custom field"),
-            pytest.param(["hardware"], None, "a custom field", id="no description"),
-            pytest.param([], "a description", "a custom field", id="empty categories"),
-            pytest.param(None, "a description", "a custom field", id="no categories"),
-        ],
-    )
-    def test_result_overwrite(self, device: AntaDevice, categories: list[str] | None, description: str | None, custom_field: str) -> None:
+    def test_result_overwrite(self, device: AntaDevice) -> None:
         """Test the AntaTest.Input.ResultOverwrite model."""
-        result_overwrite = {"categories": categories, "description": description, "custom_field": custom_field}
-        test = FakeTest(device, inputs={"result_overwrite": result_overwrite})
+        test = FakeTest(device, inputs={"result_overwrite": {"categories": ["hardware"], "description": "a description", "custom_field": "a custom field"}})
         asyncio.run(test.test())
-
         assert test.result.result == AntaTestStatus.SUCCESS
-
-        for category in categories or []:
-            assert category in test.result.categories
-        if description:
-            assert test.result.description == description
-        if custom_field:
-            assert test.result.custom_field == "a custom field"
+        assert "hardware" in test.result.categories
+        assert test.result.description == "a description"
+        assert test.result.custom_field == "a custom field"
 
 
 class TestAntaCommand:
@@ -651,7 +702,7 @@ class TestAntaCommand:
         assert command.requires_privileges is False
         command = AntaCommand(command="show aaa methods accounting")
         with pytest.raises(
-            RuntimeError, match=r"Command 'show aaa methods accounting' has not been collected and has not returned an error. Call AntaDevice.collect()."
+            RuntimeError, match="Command 'show aaa methods accounting' has not been collected and has not returned an error. Call AntaDevice.collect()."
         ):
             command.requires_privileges
 
@@ -676,6 +727,6 @@ class TestAntaCommand:
         """Test the returned_known_eos_error property unset."""
         command = AntaCommand(command="show ip interface Ethernet1")
         with pytest.raises(
-            RuntimeError, match=r"Command 'show ip interface Ethernet1' has not been collected and has not returned an error. Call AntaDevice.collect()."
+            RuntimeError, match="Command 'show ip interface Ethernet1' has not been collected and has not returned an error. Call AntaDevice.collect()."
         ):
             command.returned_known_eos_error

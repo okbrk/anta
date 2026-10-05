@@ -1,31 +1,24 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """decorators for tests."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Coroutine
-from functools import cache, wraps
-from typing import Any, ParamSpec, overload
+from functools import wraps
+from typing import TYPE_CHECKING, Any, Callable, TypeVar, cast
 
 from anta.models import AntaTest, logger
-from anta.result_manager.models import TestResult
 
-P = ParamSpec("P")
+if TYPE_CHECKING:
+    from anta.result_manager.models import TestResult
 
-T_TestAsyncFunc = Callable[P, Coroutine[Any, Any, TestResult]]
-T_TestAsyncDecorator = Callable[[T_TestAsyncFunc], T_TestAsyncFunc]
-
-
-@cache
-def _emit_preview_warning(message: str) -> None:
-    """Emit a preview warning once per unique message."""
-    logger.warning(message)
+# TODO: should probably use mypy Awaitable in some places rather than this everywhere - @gmuloc
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 # TODO: Remove this decorator in ANTA v2.0.0 in favor of deprecated_test_class
-def deprecated_test(new_tests: list[str] | None = None) -> T_TestAsyncDecorator:
+def deprecated_test(new_tests: list[str] | None = None) -> Callable[[F], F]:  # pragma: no cover
     """Return a decorator to log a message of WARNING severity when a test is deprecated.
 
     Parameters
@@ -35,42 +28,37 @@ def deprecated_test(new_tests: list[str] | None = None) -> T_TestAsyncDecorator:
 
     Returns
     -------
-    T_TestAsyncDecorator
+    Callable[[F], F]
         A decorator that can be used to wrap test functions.
 
     """
 
-    def decorator(function: T_TestAsyncFunc) -> T_TestAsyncFunc:
+    def decorator(function: F) -> F:
         """Actual decorator that logs the message.
 
         Parameters
         ----------
         function
-            The test async function to be decorated.
+            The test function to be decorated.
 
         Returns
         -------
-        T_TestAsyncFunc
-            The decorated async function.
+        F
+            The decorated function.
 
         """
-
-        @cache
-        def emit_warning(test_name: str) -> None:
-            """Emit the deprecation warning once per test function."""
-            if new_tests:
-                new_test_names = ", ".join(new_tests)
-                logger.warning("%s test is deprecated. Consider using the following new tests: %s.", test_name, new_test_names)
-            else:
-                logger.warning("%s test is deprecated.", test_name)
 
         @wraps(function)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             anta_test = args[0]
-            emit_warning(anta_test.name)
+            if new_tests:
+                new_test_names = ", ".join(new_tests)
+                logger.warning("%s test is deprecated. Consider using the following new tests: %s.", anta_test.name, new_test_names)
+            else:
+                logger.warning("%s test is deprecated.", anta_test.name)
             return await function(*args, **kwargs)
 
-        return wrapper
+        return cast(F, wrapper)
 
     return decorator
 
@@ -107,70 +95,26 @@ def deprecated_test_class(new_tests: list[str] | None = None, removal_in_version
         """
         orig_init = cls.__init__
 
-        @cache
-        def emit_warning() -> None:
-            """Emit the deprecation warning once per test class."""
+        def new_init(*args: Any, **kwargs: Any) -> None:
+            """Overload __init__ to generate a warning message for deprecation."""
             if new_tests:
                 new_test_names = ", ".join(new_tests)
                 logger.warning("%s test is deprecated. Consider using the following new tests: %s.", cls.name, new_test_names)
             else:
                 logger.warning("%s test is deprecated.", cls.name)
-
-        def new_init(*args: Any, **kwargs: Any) -> None:
-            """Overload __init__ to generate a warning message for deprecation."""
-            emit_warning()
             orig_init(*args, **kwargs)
 
         if removal_in_version is not None:
             cls.__removal_in_version = removal_in_version
 
-        cls.__init__ = new_init
+        # NOTE: we are ignoring mypy warning as we want to assign to a method here
+        cls.__init__ = new_init  # type: ignore[method-assign]
         return cls
 
     return decorator
 
 
-@overload
-def preview_test_class(cls: type[AntaTest], *, warning_message: str | None = None) -> type[AntaTest]: ...
-
-
-@overload
-def preview_test_class(cls: None = None, *, warning_message: str | None = None) -> Callable[[type[AntaTest]], type[AntaTest]]: ...
-
-
-def preview_test_class(cls: type[AntaTest] | None = None, *, warning_message: str | None = None) -> type[AntaTest] | Callable[[type[AntaTest]], type[AntaTest]]:
-    """Mark a test class as preview.
-
-    Preview tests may have their input models and behavior changed between minor releases without a deprecation notice.
-
-    Parameters
-    ----------
-    cls
-        The test class to mark as preview.
-    warning_message
-        Custom warning message. Classes using the same message share one deduplicated warning.
-    """
-
-    def decorator(test_cls: type[AntaTest]) -> type[AntaTest]:
-        """Mark the test class as preview and wrap its initializer."""
-        orig_init = test_cls.__init__
-        default_message = f"{test_cls.name} test is in preview. " + "Input models and behavior may change between minor releases."
-        message = warning_message if warning_message is not None else default_message
-
-        def new_init(*args: Any, **kwargs: Any) -> None:
-            """Overload __init__ to generate a warning message for preview tests."""
-            _emit_preview_warning(message)
-            orig_init(*args, **kwargs)
-
-        test_cls.__init__ = new_init
-        return test_cls
-
-    if cls is None:
-        return decorator
-    return decorator(cls)
-
-
-def skip_on_platforms(platforms: list[str]) -> T_TestAsyncDecorator:
+def skip_on_platforms(platforms: list[str]) -> Callable[[F], F]:
     """Return a decorator to skip a test based on the device's hardware model.
 
     This decorator factory generates a decorator that will check the hardware model of the device
@@ -183,23 +127,23 @@ def skip_on_platforms(platforms: list[str]) -> T_TestAsyncDecorator:
 
     Returns
     -------
-    T_TestAsyncDecorator
+    Callable[[F], F]
         A decorator that can be used to wrap test functions.
 
     """
 
-    def decorator(function: T_TestAsyncFunc) -> T_TestAsyncFunc:
+    def decorator(function: F) -> F:
         """Actual decorator that either runs the test or skips it based on the device's hardware model.
 
         Parameters
         ----------
         function
-            The test async function to be decorated.
+            The test function to be decorated.
 
         Returns
         -------
-        T_TestAsyncFunc
-            The decorated async function.
+        F
+            The decorated function.
 
         """
 
@@ -217,12 +161,12 @@ def skip_on_platforms(platforms: list[str]) -> T_TestAsyncDecorator:
                 return anta_test.result
 
             if anta_test.device.hw_model in platforms:
-                anta_test.result.is_skipped(f"{anta_test.__class__.__name__} test is not supported on {anta_test.device.hw_model}")
+                anta_test.result.is_skipped(f"{anta_test.__class__.__name__} test is not supported on {anta_test.device.hw_model}.")
                 AntaTest.update_progress()
                 return anta_test.result
 
             return await function(*args, **kwargs)
 
-        return wrapper
+        return cast(F, wrapper)
 
     return decorator

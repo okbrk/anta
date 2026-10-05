@@ -72,208 +72,37 @@ anta.tests.avt:
           path_type: direct
 anta.tests.bfd:
   - VerifyBFDPeersHealth:
-      # Verifies the health of BFD peers across all VRFs.
+      # Verifies the health of IPv4 BFD peers across all VRFs.
       down_threshold: 2
   - VerifyBFDPeersIntervals:
-      # Verifies the operational timers of BFD peer sessions.
+      # Verifies the timers of IPv4 BFD peer sessions.
       bfd_peers:
-        # Multi-hop session in VRF default
         - peer_address: 192.0.255.8
-          tx_interval: 3600
-          rx_interval: 3600
+          vrf: default
+          tx_interval: 1200
+          rx_interval: 1200
           multiplier: 3
-        # Multi-hop session in VRF DEV
         - peer_address: 192.0.255.7
-          vrf: DEV
-          tx_interval: 3600
-          rx_interval: 3600
-          multiplier: 3
-        # Single-hop session on local transport interface Ethernet3 in VRF PROD
-        - peer_address: 192.168.10.2
-          vrf: PROD
-          interface: Ethernet3
+          vrf: default
           tx_interval: 1200
           rx_interval: 1200
           multiplier: 3
-          detection_time: 3600  # Optional
-        # IPv6 peers also supported
-        - peer_address: fd00:dc:1::1
-          tx_interval: 1200
-          rx_interval: 1200
-          multiplier: 3
-          detection_time: 3600  # Optional
+          detection_time: 3600
   - VerifyBFDPeersRegProtocols:
-      # Verifies the registered protocols of BFD peer sessions.
+      # Verifies the registered routing protocol of IPv4 BFD peer sessions.
       bfd_peers:
-        # Multi-hop session in VRF default
-        - peer_address: 192.0.255.8
-          protocols: [ bgp ]
-        # Multi-hop session in VRF DEV
         - peer_address: 192.0.255.7
-          vrf: DEV
-          protocols: [ bgp, vxlan ]
-        # Single-hop session on local transport interface Ethernet3 in VRF PROD
-        - peer_address: 192.168.10.2
-          vrf: PROD
-          interface: Ethernet3
-          protocols: [ ospf ]
-          detection_time: 3600  # Optional
-        # IPv6 peers also supported
-        - peer_address: fd00:dc:1::1
-          protocols: [ isis ]
+          vrf: default
+          protocols:
+            - bgp
   - VerifyBFDSpecificPeers:
-      # Verifies the state of BFD peer sessions.
+      # Verifies the state of IPv4 BFD peer sessions.
       bfd_peers:
-        # Multi-hop session in VRF default
         - peer_address: 192.0.255.8
-        # Multi-hop session in VRF DEV
+          vrf: default
         - peer_address: 192.0.255.7
-          vrf: DEV
-        # Single-hop session on local transport interface Ethernet3 in VRF PROD
-        - peer_address: 192.168.10.2
-          vrf: PROD
-          interface: Ethernet3
-        # IPv6 peers also supported
-        - peer_address: fd00:dc:1::1
+          vrf: default
 anta.tests.configuration:
-  - VerifyRunningConfig:
-      # Verifies the running-config against a set of rules.
-      rules:
-
-        # ━━━ TOP-LEVEL COMMANDS ━━━
-        # When section is omitted, entries are checked against top-level
-        # commands of the running-config.
-
-        # exact (default mode) — command must exist verbatim
-        - entries:
-            - match: "aaa authorization exec default local"
-              description: "AAA authorization"
-
-        # exact + absent — command must NOT exist
-        - entries:
-            - match: "enable password"
-              absent: true
-              description: "No static enable password"
-
-        # contains — at least one command must contain this substring
-        - entries:
-            - match: "ntp server"
-              mode: contains
-              description: "NTP server configured"
-
-        # contains + absent — no command may contain this substring
-        - entries:
-            - match: "snmp-server community"
-              mode: contains
-              absent: true
-              description: "No SNMP community strings"
-
-        # regex — at least one command must match this pattern
-        - entries:
-            - match: "logging host \\S+"
-              mode: regex
-              description: "Remote syslog configured"
-
-        # regex + absent — no command may match this pattern
-        - entries:
-            - match: "username .* secret 0 "
-              mode: regex
-              absent: true
-              description: "No plaintext secrets"
-
-        # ━━━ SINGLE SECTION ━━━
-        # Target a specific running-config section. Each element uses exact key
-        # lookup first, falling back to a regex fullmatch.
-
-        # Multiple entries validated within the same section
-        - section: ["management api http-commands"]
-          entries:
-            - match: "no shutdown"
-              description: "eAPI enabled"
-            - match: "protocol http"
-              mode: contains
-              absent: true
-              description: "No plaintext HTTP"
-
-        # ━━━ THRESHOLD CHECKS ━━━
-        # Compare a captured numeric value against a bound.
-        # Requires mode: regex with a capture group.
-
-        # ge — captured value must be >= threshold
-        - section: ["interface Ethernet1"]
-          entries:
-            - match: "mtu (\\d+)"
-              mode: regex
-              description: "Uplink MTU"
-              threshold:
-                value: 1500
-                operator: ge
-
-        # eq — captured value must equal threshold (default operator)
-        - section: ["router bgp \\d+"]
-          entries:
-            - match: "graceful-restart restart-time (\\d+)"
-              mode: regex
-              description: "BGP graceful-restart timer"
-              threshold:
-                value: 300
-                operator: eq
-
-        # le — captured value must be <= threshold
-        - section: ["router bgp \\d+"]
-          entries:
-            - match: "maximum-paths (\\d+)"
-              mode: regex
-              description: "BGP ECMP paths"
-              threshold:
-                value: 4
-                operator: le
-
-        # ━━━ NESTED SECTIONS ━━━
-        # Navigate multiple nested sections of the running-config.
-
-        - section: ["management api http-commands", "vrf MGMT"]
-          entries:
-            - match: "no shutdown"
-              description: "eAPI enabled in MGMT VRF"
-
-        - section: ["router bgp \\d+", "address-family evpn"]
-          entries:
-            - match: "neighbor EVPN-OVERLAY-PEERS activate"
-
-        # ━━━ WILDCARD SECTIONS ━━━
-        # Regex patterns matching multiple sections. Each match
-        # produces its own independent atomic result.
-
-        # All Ethernet interfaces must have a description
-        - section: ["interface Ethernet\\d+"]
-          entries:
-            - match: "description"
-              mode: contains
-              description: "Ethernet description"
-
-        # All BGP VRFs must have a router-id
-        - section: ["router bgp \\d+", "vrf .*"]
-          entries:
-            - match: "router-id"
-              mode: contains
-              description: "BGP VRF router-id"
-
-        # Wildcard + threshold — fleet-wide MTU check
-        - section: ["interface Ethernet\\d+$"]
-          entries:
-            - match: "mtu (\\d+)"
-              mode: regex
-              description: "Global MTU policy"
-              threshold:
-                value: 1500
-                operator: ge
-
-        # ━━━ SECTION EXISTENCE CHECK ━━━
-        # Use entries: [] to verify a section exists without checking commands.
-
-        - section: ["router bgp \\d+"]
-          entries: []
   - VerifyRunningConfigDiffs:
       # Verifies there is no difference between the running-config and the startup-config.
   - VerifyRunningConfigLines:
@@ -286,19 +115,12 @@ anta.tests.configuration:
 anta.tests.connectivity:
   - VerifyLLDPNeighbors:
       # Verifies the connection status of the specified LLDP (Link Layer Discovery Protocol) neighbors.
-      require_fqdn: False
       neighbors:
         - port: Ethernet1
           neighbor_device: DC1-SPINE1
           neighbor_port: Ethernet1
         - port: Ethernet2
-          neighbor_device: dc1-leaf2-server1
-          neighbor_port: iLO
-  - VerifyLLDPNeighbors:
-      require_fqdn: True
-      neighbors:
-        - port: Ethernet1
-          neighbor_device: DC1-SPINE1.local.com
+          neighbor_device: DC1-SPINE2
           neighbor_port: Ethernet1
   - VerifyReachability:
       # Test network reachability to one or many destination IP(s).
@@ -308,17 +130,11 @@ anta.tests.connectivity:
           vrf: MGMT
           df_bit: True
           size: 100
-          reachable: true
-        - destination: 8.8.8.8
+        - source: Management0
+          destination: 8.8.8.8
           vrf: MGMT
           df_bit: True
           size: 100
-        - source: fd12:3456:789a:1::1
-          destination: fd12:3456:789a:1::2
-          vrf: default
-          df_bit: True
-          size: 100
-          reachable: false
 anta.tests.cvx:
   - VerifyActiveCVXConnections:
       # Verifies the number of active CVX Connections.
@@ -339,39 +155,6 @@ anta.tests.cvx:
   - VerifyMcsServerMounts:
       # Verify if all MCS server mounts are in a MountComplete state.
       connections_count: 100
-anta.tests.evpn:
-  - VerifyEVPNType5Routes:
-      # Verifies EVPN Type-5 routes for given IP prefixes and VNIs.
-      prefixes:
-        # At least one active/valid path across all RDs
-        - address: 192.168.10.0/24
-          vni: 10
-        # Specific routes each has at least one active/valid path
-        - address: 192.168.20.0/24
-          vni: 20
-          routes:
-            - rd: "10.0.0.1:20"
-              domain: local
-            - rd: "10.0.0.2:20"
-              domain: remote
-        # At least one active/valid path matching the nexthop
-        - address: 192.168.30.0/24
-          vni: 30
-          routes:
-            - rd: "10.0.0.1:30"
-              domain: local
-              paths:
-                - nexthop: 10.1.1.1
-        # At least one active/valid path matching nexthop and specific RTs
-        - address: 192.168.40.0/24
-          vni: 40
-          routes:
-            - rd: "10.0.0.1:40"
-              domain: local
-              paths:
-                - nexthop: 10.1.1.1
-                  route_targets:
-                    - "40:40"
 anta.tests.field_notices:
   - VerifyFieldNotice44Resolution:
       # Verifies that the device is using the correct Aboot version per FN0044.
@@ -379,7 +162,7 @@ anta.tests.field_notices:
       # Verifies if the device is exposed to FN0072, and if the issue has been mitigated.
 anta.tests.flow_tracking:
   - VerifyHardwareFlowTrackerStatus:
-      # Verifies the hardware flow tracking state.
+      # Verifies if hardware flow tracking is running and an input tracker is active. Optionally verifies the tracker interval/timeout and exporter configuration.
       trackers:
         - name: FLOW-TRACKER
           record_export:
@@ -395,70 +178,26 @@ anta.tests.greent:
   - VerifyGreenTCounters:
       # Verifies if the GreenT counters are incremented.
 anta.tests.hardware:
-  - VerifyAbsenceOfLinecards:
-      # Verifies that specific linecards are not present in the device inventory.
-      serial_numbers:
-        - VJM24220VJ1
-        - VJM24230VJ2
   - VerifyAdverseDrops:
-      # Verifies there are no adverse drops exceeding defined thresholds.
-      thresholds:  # Optional
-        minute: 3
-        ten_minute: 20
-        hour: 100
-        day: 500
-        week: 1000
-      always_fail_on_reassembly_errors: false
-  - VerifyChassisHealth:
-      # Verifies the health of the hardware chassis components.
+      # Verifies there are no adverse drops on DCS-7280 and DCS-7500 family switches.
   - VerifyEnvironmentCooling:
       # Verifies the status of power supply fans and all fan trays.
       states:
         - ok
   - VerifyEnvironmentPower:
-      # Verifies the power supplies state and input voltage.
+      # Verifies the power supplies status.
       states:
         - ok
-      min_input_voltage: 50 # Optional
-      min_count: 1 # Optional
   - VerifyEnvironmentSystemCooling:
       # Verifies the device's system cooling status.
-  - VerifyHardwareCapacityUtilization:
-      # Verifies hardware capacity utilization.
-      capacity_utilization_threshold: 90
-      strict_mode: true
-  - VerifyInventory:
-      # Verifies the physical hardware inventory of the device.
-      # Verify at least 2 power supplies are installed
-      # Strictly check that all fabric card slots are filled
-      # Other components types (fan trays, line cards, supervisors) are ignored
-      requirements:
-        power_supplies: 2
-        fabric_cards: all
-  - VerifyModuleStatus:
-      # Verifies the operational status and power stability of all modules in a modular chassis.
-      # To accept 'ok' or 'poweredOff' statuses for linecards
-      module_statuses:
-        - ok
-        - poweredOff
-      # To test a single-supervisor chassis
-      supervisor_mode: single
-  - VerifyPCIeErrors:
-      # Verifies PCIe device error counters.
-      thresholds:  # Optional
-        correctable_errors: 10000
-        non_fatal_errors: 30
-        fatal_errors: 30
-  - VerifySupervisorRedundancy:
-      # Verifies the redundancy protocol configured on the active supervisor.
   - VerifyTemperature:
       # Verifies if the device temperature is within acceptable limits.
   - VerifyTransceiversManufacturers:
       # Verifies if all the transceivers come from approved manufacturers.
       manufacturers:
+        - Not Present
         - Arista Networks
         - Arastra, Inc.
-      allow_not_present: true
   - VerifyTransceiversTemperature:
       # Verifies if all the transceivers are operating at an acceptable temperature.
 anta.tests.interfaces:
@@ -468,35 +207,13 @@ anta.tests.interfaces:
         - Ethernet1
         - Ethernet2
   - VerifyIllegalLACP:
-      # Verifies there are no illegal LACP packets in port channels.
-      ignored_interfaces:
-        - Port-Channel1
-        - Port-Channel2
-      interfaces:
-        - Port-Channel10
-        - Port-Channel12
+      # Verifies there are no illegal LACP packets in all port channels.
   - VerifyInterfaceDiscards:
       # Verifies that the interfaces packet discard counters are equal to zero.
-      interfaces:
-        - Ethernet1
-        - Port-Channel1
-      ignored_interfaces:
-        - Vxlan1
-        - Loopback0
   - VerifyInterfaceErrDisabled:
       # Verifies there are no interfaces in the errdisabled state.
-      interfaces:
-        - Ethernet1/1
-      ignored_interfaces:
-        - Ethernet1/5
-        - Ethernet1/6
   - VerifyInterfaceErrors:
       # Verifies that the interfaces error counters are equal to zero.
-      interfaces:
-        - Ethernet1/1
-      ignored_interfaces:
-        - Ethernet1/5
-        - Ethernet1/6
   - VerifyInterfaceIPv4:
       # Verifies the interface IPv4 addresses.
       interfaces:
@@ -508,70 +225,6 @@ anta.tests.interfaces:
   - VerifyInterfaceUtilization:
       # Verifies that the utilization of interfaces is below a certain threshold.
       threshold: 70.0
-      ignored_interfaces:
-        - Ethernet1
-        - Port-Channel1
-      interfaces:
-        - Ethernet10
-        - Loopback0
-  - VerifyInterfacesBER:
-      # Verifies interfaces pre-FEC bit error rate (BER) and FEC uncorrected codewords.
-      interfaces:
-        - Ethernet1/1
-        - Ethernet2/1
-      max_ber_threshold: 1e-6
-  - VerifyInterfacesCounterDetails:
-      # Verifies the interfaces counter details.
-      interfaces:  # Optionally target specific interfaces
-        - Ethernet1/1
-        - Ethernet2/1
-      ignored_interfaces:  # OR ignore specific interfaces
-        - Management0
-      counters_threshold: 10
-      link_status_changes_threshold: 100
-  - VerifyInterfacesECNCounters:
-      # Verifies the interfaces ECN counters for all queues.
-      interfaces:  # Optionally target specific interfaces
-        - Ethernet1/1
-        - Ethernet2/1
-      ignored_interfaces:  # OR ignore specific interfaces
-        - Management0
-      counters_threshold: 0
-  - VerifyInterfacesEgressQueueDrops:
-      # Verifies interface egress queue drop counters.
-      interfaces:
-        - Et1
-        - Et2
-      traffic_classes:
-        - TC0
-        - TC3
-      drop_precedences:
-        - DP0
-  - VerifyInterfacesOpticsReceivePower:
-      # Verifies that the receive power levels of optical interface transceivers are within acceptable limits.
-      interfaces:  # Optionally target specific interfaces
-        - Ethernet1/1
-        - Ethernet2/1
-      ignored_interfaces:  # OR ignore specific interfaces
-        - Ethernet3/1
-      failure_margin: 2
-      ignore_shutdown_interfaces: true
-  - VerifyInterfacesOpticsTemperature:
-      # Verifies that the temperature of optical interface transceivers is within acceptable limits.
-      interfaces:  # Optionally target specific interfaces
-        - Ethernet1/1
-        - Ethernet2/1
-      ignored_interfaces:  # OR ignore specific interfaces
-        - Ethernet3/1
-      max_transceiver_temperature: 68
-  - VerifyInterfacesPFCCounters:
-      # Verifies the interfaces PFC frame send and receive counters.
-      interfaces:  # Optionally target specific interfaces
-        - Ethernet1/1
-        - Ethernet2/1
-      ignored_interfaces:  # OR ignore specific interfaces
-        - Management0
-      counters_threshold: 0
   - VerifyInterfacesSpeed:
       # Verifies the speed, lanes, auto-negotiation status, and mode as full duplex for interfaces.
       interfaces:
@@ -596,41 +249,24 @@ anta.tests.interfaces:
         - name: Ethernet49/1
           status: adminDown
           line_protocol_status: notPresent
-  - VerifyInterfacesTridentCounters:
-      # Verifies the Trident debug counters of all interfaces.
-      ignored_counters:
-        - nonCongestionDiscard
-        - rxFpDrop
-        - rxVlanDrop
-      packet_drop_threshold: 0
-  - VerifyInterfacesVoqAndEgressQueueDrops:
-      # Verifies interface ingress VOQ and egress queue drop counters.
-      interfaces:
-        - Et1
-        - Et2
-      traffic_classes:
-        - TC0
-        - TC3
   - VerifyIpVirtualRouterMac:
       # Verifies the IP virtual router MAC address.
       mac_address: 00:1c:73:00:dc:01
   - VerifyL2MTU:
-      # Verifies the L2 MTU of bridged interfaces.
-      mtu: 9214
+      # Verifies the global L2 MTU of all L2 interfaces.
+      mtu: 1500
       ignored_interfaces:
-        - Ethernet2/1
-        - Port-Channel  # Ignore all Port-Channel interfaces
+        - Management1
+        - Vxlan1
       specific_mtu:
         - Ethernet1/1: 1500
   - VerifyL3MTU:
-      # Verifies the L3 MTU of routed interfaces.
+      # Verifies the global L3 MTU of all L3 interfaces.
       mtu: 1500
       ignored_interfaces:
-          - Management  # Ignore all Management interfaces
-          - Ethernet2.100
-          - Ethernet1/1
+          - Vxlan1
       specific_mtu:
-          - Ethernet10: 9200
+          - Ethernet1: 2500
   - VerifyLACPInterfacesStatus:
       # Verifies the Link Aggregation Control Protocol (LACP) status of the interface.
       interfaces:
@@ -640,49 +276,21 @@ anta.tests.interfaces:
       # Verifies the number of loopback interfaces and their status.
       number: 3
   - VerifyPortChannels:
-      # Verifies there are no inactive ports in port channels.
-      ignored_interfaces:
-        - Port-Channel1
-        - Port-Channel2
-      interfaces:
-        - Port-Channel11
-        - Port-Channel22
+      # Verifies there are no inactive ports in all port channels.
   - VerifySVI:
       # Verifies the status of all SVIs.
   - VerifyStormControlDrops:
       # Verifies there are no interface storm-control drop counters.
-      interfaces:
-        - Ethernet1
-        - Ethernet2
-      ignored_interfaces:
-        - Vxlan1
-        - Loopback0
 anta.tests.lanz:
   - VerifyLANZ:
       # Verifies if LANZ is enabled.
 anta.tests.logging:
   - VerifyLoggingAccounting:
       # Verifies if AAA accounting logs are generated.
-  - VerifyLoggingEntries:
-      # Verifies that log strings are present or absent in the logging buffer.
-      logging_entries:
-        - regex_match: ".*ACCOUNTING-5-EXEC: cvpadmin ssh.*"
-          last_number_messages: 30
-          severity_level: alerts
-        - regex_match:
-            - ".*SPANTREE-6-INTERFACE_ADD:.*"
-            - ".*ACCOUNTING-5-EXEC: cvpadmin ssh.*"
-          last_number_time_units: 3
-          time_unit: hours
-          severity_level: critical
-          fail_on_match: True
   - VerifyLoggingErrors:
       # Verifies there are no syslog messages with a severity of ERRORS or higher.
-      last_number_time_units: 10
-      time_unit: hours
   - VerifyLoggingHostname:
       # Verifies if logs are generated with the device FQDN.
-      severity_level: informational
   - VerifyLoggingHosts:
       # Verifies logging hosts (syslog servers) for a specified VRF.
       hosts:
@@ -691,7 +299,6 @@ anta.tests.logging:
       vrf: default
   - VerifyLoggingLogsGeneration:
       # Verifies if logs are generated.
-      severity_level: informational
   - VerifyLoggingPersistent:
       # Verifies if logging persistent is enabled and logs are saved in flash.
   - VerifyLoggingSourceIntf:
@@ -700,7 +307,6 @@ anta.tests.logging:
       vrf: default
   - VerifyLoggingTimestamp:
       # Verifies if logs are generated with the appropriate timestamp.
-      severity_level: informational
   - VerifySyslogLogging:
       # Verifies if syslog logging is enabled.
 anta.tests.mlag:
@@ -736,7 +342,7 @@ anta.tests.path_selection:
   - VerifyPathsHealth:
       # Verifies the path and telemetry state of all paths under router path-selection.
   - VerifySpecificPath:
-      # Verifies the DPS path and telemetry state of an IPv4 peer.
+      # Verifies the path and telemetry state of a specific path for an IPv4 peer under router path-selection.
       paths:
         - peer: 10.255.0.1
           path_group: internet
@@ -763,22 +369,14 @@ anta.tests.ptp:
       # Verifies the PTP interfaces state.
 anta.tests.routing.bgp:
   - VerifyBGPAdvCommunities:
-      # Verifies the advertised communities of BGP peers.
+      # Verifies that advertised communities are standard, extended and large for BGP IPv4 peer(s).
       bgp_peers:
         - peer_address: 172.30.11.17
           vrf: default
         - peer_address: 172.30.11.21
-          vrf: MGMT
-          advertised_communities: ["standard", "extended"]
-        - peer_address: fd00:dc:1::1
           vrf: default
-        # RFC5549
-        - interface: Ethernet1
-          vrf: default
-          advertised_communities: ["standard", "extended"]
   - VerifyBGPExchangedRoutes:
       # Verifies the advertised and received routes of BGP IPv4 peer(s).
-      check_active: True
       bgp_peers:
         - peer_address: 172.30.255.5
           vrf: default
@@ -791,36 +389,20 @@ anta.tests.routing.bgp:
           advertised_routes:
             - 192.0.255.1/32
             - 192.0.254.5/32
+          received_routes:
+            - 192.0.254.3/32
   - VerifyBGPNlriAcceptance:
-      # Verifies that all received NLRI are accepted for all AFI/SAFI configured for BGP peers.
+      # Verifies that all received NLRI are accepted for all AFI/SAFI configured for BGP IPv4 peer(s).
       bgp_peers:
         - peer_address: 10.100.0.128
           vrf: default
           capabilities:
             - ipv4Unicast
-        - peer_address: 2001:db8:1::2
-          vrf: default
-          capabilities:
-            - ipv6Unicast
-        - peer_address: fe80::2%Et1
-          vrf: default
-          capabilities:
-            - ipv6Unicast
-        # RFC 5549
-        - peer_address: fe80::2%Et1
-          vrf: default
-          capabilities:
-            - ipv6Unicast
   - VerifyBGPPeerASNCap:
-      # Verifies the four octet ASN capability of BGP peers.
+      # Verifies the four octet ASN capability of BGP IPv4 peer(s).
       bgp_peers:
         - peer_address: 172.30.11.1
           vrf: default
-        - peer_address: fd00:dc:1::1
-          vrf: default
-        # RFC5549
-        - interface: Ethernet1
-          vrf: MGMT
   - VerifyBGPPeerCount:
       # Verifies the count of BGP peers for given address families.
       address_families:
@@ -839,100 +421,48 @@ anta.tests.routing.bgp:
           vrf: "DEV"
           num_peers: 3
   - VerifyBGPPeerDropStats:
-      # Verifies BGP NLRI drop statistics of BGP peers.
+      # Verifies BGP NLRI drop statistics for the provided BGP IPv4 peer(s).
       bgp_peers:
         - peer_address: 172.30.11.1
           vrf: default
-          drop_stats:
-            - inDropAsloop
-            - prefixEvpnDroppedUnsupportedRouteType
-        - peer_address: fd00:dc:1::1
-          vrf: default
-          drop_stats:
-            - inDropAsloop
-            - prefixEvpnDroppedUnsupportedRouteType
-        # RFC5549
-        - interface: Ethernet1
-          vrf: MGMT
           drop_stats:
             - inDropAsloop
             - prefixEvpnDroppedUnsupportedRouteType
   - VerifyBGPPeerGroup:
-      # Verifies BGP peer group of BGP peers.
+      # Verifies BGP peer group of BGP IPv4 peer(s).
       bgp_peers:
         - peer_address: 172.30.11.1
           vrf: default
           peer_group: IPv4-UNDERLAY-PEERS
-        - peer_address: fd00:dc:1::1
-          vrf: default
-          peer_group: IPv4-UNDERLAY-PEERS
-        # RFC5549
-        - interface: Ethernet1
-          vrf: MGMT
-          peer_group: IPv4-UNDERLAY-PEERS
   - VerifyBGPPeerMD5Auth:
-      # Verifies the MD5 authentication and state of BGP peers.
+      # Verifies the MD5 authentication and state of IPv4 BGP peer(s) in a specified VRF.
       bgp_peers:
         - peer_address: 172.30.11.1
           vrf: default
         - peer_address: 172.30.11.5
           vrf: default
-        - peer_address: fd00:dc:1::1
-          vrf: default
-        # RFC5549
-        - interface: Ethernet1
-          vrf: default
   - VerifyBGPPeerMPCaps:
-      # Verifies the multiprotocol capabilities of BGP peers.
+      # Verifies the multiprotocol capabilities of BGP IPv4 peer(s).
       bgp_peers:
         - peer_address: 172.30.11.1
           vrf: default
           strict: False
           capabilities:
-            - ipv4 labeled-Unicast
-            - ipv4MplsVpn
-        - peer_address: fd00:dc:1::1
-          vrf: default
-          strict: False
-          capabilities:
-            - ipv4 labeled-Unicast
-            - ipv4MplsVpn
-        # RFC5549
-        - interface: Ethernet1
-          vrf: default
-          strict: False
-          capabilities:
-            - ipv4 labeled-Unicast
-            - ipv4MplsVpn
+            - ipv4Unicast
   - VerifyBGPPeerRouteLimit:
-      # Verifies maximum routes and warning limit for BGP peers.
+      # Verifies maximum routes and warning limit for BGP IPv4 peer(s).
       bgp_peers:
         - peer_address: 172.30.11.1
           vrf: default
-          maximum_routes: 12000
-          warning_limit: 10000
-        - peer_address: fd00:dc:1::1
-          vrf: default
-          maximum_routes: 12000
-          warning_limit: 10000
-        # RFC5549
-        - interface: Ethernet1
-          vrf: MGMT
           maximum_routes: 12000
           warning_limit: 10000
   - VerifyBGPPeerRouteRefreshCap:
-      # Verifies the route refresh capabilities of BGP peers.
+      # Verifies the route refresh capabilities of IPv4 BGP peer(s) in a specified VRF.
       bgp_peers:
         - peer_address: 172.30.11.1
           vrf: default
-        - peer_address: fd00:dc:1::1
-          vrf: default
-        # RFC5549
-        - interface: Ethernet1
-          vrf: MGMT
   - VerifyBGPPeerSession:
-      # Verifies the session state of BGP peers.
-      minimum_established_time: 10000
+      # Verifies the session state of BGP IPv4 peer(s).
       check_tcp_queues: false
       bgp_peers:
         - peer_address: 10.1.0.1
@@ -943,66 +473,27 @@ anta.tests.routing.bgp:
           vrf: DEV
         - peer_address: 10.1.255.4
           vrf: DEV
-        - peer_address: fd00:dc:1::1
-          vrf: default
-        # RFC5549
-        - interface: Ethernet1
-          vrf: default
-        - interface: Vlan3499
-          vrf: PROD
   - VerifyBGPPeerSessionRibd:
-      # Verifies the session state of BGP peers.
-      minimum_established_time: 10000
+      # Verifies the session state of BGP IPv4 peer(s).
       check_tcp_queues: false
       bgp_peers:
         - peer_address: 10.1.0.1
           vrf: default
+        - peer_address: 10.1.0.2
+          vrf: default
+        - peer_address: 10.1.255.2
+          vrf: DEV
         - peer_address: 10.1.255.4
           vrf: DEV
-        - peer_address: fd00:dc:1::1
-          vrf: default
-        # RFC5549
-        - interface: Ethernet1
-          vrf: MGMT
-  - VerifyBGPPeerTtlMultiHops:
-      # Verifies BGP TTL and max-ttl-hops count for BGP peers.
-      bgp_peers:
-          - peer_address: 172.30.11.1
-            vrf: default
-            ttl: 3
-            max_ttl_hops: 3
-          - peer_address: 172.30.11.2
-            vrf: test
-            ttl: 30
-            max_ttl_hops: 30
-          - peer_address: fd00:dc:1::1
-            vrf: default
-            ttl: 30
-            max_ttl_hops: 30
-          # RFC5549
-          - interface: Ethernet1
-            vrf: MGMT
-            ttl: 30
-            max_ttl_hops: 30
   - VerifyBGPPeerUpdateErrors:
-      # Verifies BGP update error counters of BGP peers.
+      # Verifies BGP update error counters for the provided BGP IPv4 peer(s).
       bgp_peers:
         - peer_address: 172.30.11.1
           vrf: default
           update_errors:
             - inUpdErrWithdraw
-        - peer_address: fd00:dc:1::1
-          vrf: default
-          update_errors:
-            - inUpdErrWithdraw
-        # RFC5549
-        - interface: Ethernet1
-          vrf: MGMT
-          update_errors:
-            - inUpdErrWithdraw
   - VerifyBGPPeersHealth:
       # Verifies the health of BGP peers for given address families.
-      minimum_established_time: 10000
       address_families:
         - afi: "evpn"
         - afi: "ipv4"
@@ -1013,34 +504,8 @@ anta.tests.routing.bgp:
           vrf: "DEV"
           check_tcp_queues: false
   - VerifyBGPPeersHealthRibd:
-      # Verifies the health of all the BGP peers.
+      # Verifies the health of all the BGP IPv4 peer(s).
       check_tcp_queues: True
-  - VerifyBGPRedistribution:
-      # Verifies BGP redistribution.
-      vrfs:
-        - vrf: default
-          address_families:
-            - afi_safi: ipv4multicast
-              redistributed_routes:
-                - proto: Connected
-                  include_leaked: True
-                  route_map: RM-CONN-2-BGP
-                - proto: IS-IS
-                  include_leaked: True
-                  route_map: RM-CONN-2-BGP
-            - afi_safi: IPv6 Unicast
-              redistributed_routes:
-                - proto: User # Converted to EOS SDK
-                  route_map: RM-CONN-2-BGP
-                - proto: Static
-                  include_leaked: True
-                  route_map: RM-CONN-2-BGP
-  - VerifyBGPRouteECMP:
-      # Verifies BGP IPv4 route ECMP paths.
-      route_entries:
-          - prefix: 10.100.0.128/31
-            vrf: default
-            ecmp_count: 2
   - VerifyBGPRoutePaths:
       # Verifies BGP IPv4 route paths.
       route_entries:
@@ -1053,7 +518,6 @@ anta.tests.routing.bgp:
                 origin: Incomplete
   - VerifyBGPSpecificPeers:
       # Verifies the health of specific BGP peer(s) for given address families.
-      minimum_established_time: 10000
       address_families:
         - afi: "evpn"
           peers:
@@ -1067,7 +531,7 @@ anta.tests.routing.bgp:
             - 10.1.255.2
             - 10.1.255.4
   - VerifyBGPTimers:
-      # Verifies the timers of BGP peers.
+      # Verifies the timers of BGP IPv4 peer(s).
       bgp_peers:
         - peer_address: 172.30.11.1
           vrf: default
@@ -1077,29 +541,11 @@ anta.tests.routing.bgp:
           vrf: default
           hold_time: 180
           keep_alive_time: 60
-        - peer_address: fd00:dc:1::1
-          vrf: default
-          hold_time: 180
-          keep_alive_time: 60
-        # RFC5549
-        - interface: Ethernet1
-          vrf: MGMT
-          hold_time: 180
-          keep_alive_time: 60
   - VerifyBgpRouteMaps:
-      # Verifies BGP inbound and outbound route-maps of BGP peers.
+      # Verifies BGP inbound and outbound route-maps of BGP IPv4 peer(s).
       bgp_peers:
         - peer_address: 172.30.11.1
           vrf: default
-          inbound_route_map: RM-MLAG-PEER-IN
-          outbound_route_map: RM-MLAG-PEER-OUT
-        - peer_address: fd00:dc:1::1
-          vrf: default
-          inbound_route_map: RM-MLAG-PEER-IN
-          outbound_route_map: RM-MLAG-PEER-OUT
-        # RFC5549
-        - interface: Ethernet1
-          vrf: MGMT
           inbound_route_map: RM-MLAG-PEER-IN
           outbound_route_map: RM-MLAG-PEER-OUT
   - VerifyEVPNType2Route:
@@ -1110,33 +556,6 @@ anta.tests.routing.bgp:
         - address: aac1.ab5d.b41e
           vni: 10010
 anta.tests.routing.generic:
-  - VerifyIPv4RouteNextHops:
-      # Verifies the next-hops of the IPv4 prefixes.
-      route_entries:
-          - prefix: 10.10.0.1/32
-            vrf: default
-            strict: false
-            nexthops:
-              - 10.100.0.8
-              - 10.100.0.10
-  - VerifyIPv4RoutePresencePerPrefix:
-      # Verifies that the provided IPv4 prefixes are present in the routing table.
-      route_entries:
-        - prefix: 10.10.0.1/32
-          vrf: default
-        - prefix: 10.100.0.12/31
-          vrf: MGMT
-        - prefix: 10.100.1.5/32
-          vrf: data
-  - VerifyIPv4RoutePresencePerVRF:
-      # Verifies that the provided IPv4 prefixes are present in the routing table.
-      route_entries:
-        - prefix: 10.10.0.1/32
-          vrf: default
-        - prefix: 10.100.0.12/31
-          vrf: MGMT
-        - prefix: 10.100.1.5/32
-          vrf: data
   - VerifyIPv4RouteType:
       # Verifies the route-type of the IPv4 prefixes.
       routes_entries:
@@ -1152,63 +571,33 @@ anta.tests.routing.generic:
   - VerifyRoutingProtocolModel:
       # Verifies the configured routing protocol model.
       model: multi-agent
-  - VerifyRoutingStatus:
-      # Verifies the routing status for IPv4/IPv6 unicast, multicast, and IPv6 interfaces (RFC5549).
-      ipv4_unicast: True
-      ipv6_unicast: True
   - VerifyRoutingTableEntry:
-      # (Deprecated) Verifies that the provided routes are present in the routing table of a specified VRF.
+      # Verifies that the provided routes are present in the routing table of a specified VRF.
       vrf: default
       routes:
         - 10.1.0.1
         - 10.1.0.2
   - VerifyRoutingTableSize:
-      # Verifies the size of the IP routing table.
+      # Verifies the size of the IP routing table of the default VRF.
       minimum: 2
       maximum: 20
-  - VerifyRoutingTableSize:
-      minimum: 1
-      maximum: 100
-      vrfs:
-        - vrf: default
-        - vrf: MGMT
-          route_sources:
-            - source: static
-              maximum: 10
-        - vrf: EVPN_TENANT_A
-          route_sources:
-            - source: bgp
-              minimum: 200
-              maximum: 1000
 anta.tests.routing.isis:
-  - VerifyISISGracefulRestart:
-      # Verifies the IS-IS graceful restart feature.
-      instances:
-        - name: '1'
-          vrf: default
-          graceful_restart: True
-          graceful_restart_helper: False
-        - name: '2'
-          vrf: default
-        - name: '11'
-          vrf: test
-          graceful_restart: True
-        - name: '12'
-          vrf: test
-          graceful_restart_helper: False
   - VerifyISISInterfaceMode:
-      # Verifies IS-IS interfaces are running in the correct mode.
+      # Verifies interface mode for IS-IS
       interfaces:
         - name: Loopback0
           mode: passive
+          # vrf is set to default by default
         - name: Ethernet2
           mode: passive
           level: 2
+          # vrf is set to default by default
         - name: Ethernet1
           mode: point-to-point
-          vrf: PROD
+          vrf: default
+          # level is set to 2 by default
   - VerifyISISNeighborCount:
-      # Verifies the number of IS-IS neighbors per interface and level.
+      # Verifies number of IS-IS neighbors per level and per interface.
       interfaces:
         - name: Ethernet1
           level: 1
@@ -1218,11 +607,11 @@ anta.tests.routing.isis:
           count: 1
         - name: Ethernet3
           count: 2
+          # level is set to 2 by default
   - VerifyISISNeighborState:
-      # Verifies the health of IS-IS neighbors.
-      check_all_vrfs: true
+      # Verifies all IS-IS neighbors are in UP state.
   - VerifyISISSegmentRoutingAdjacencySegments:
-      # Verifies IS-IS segment routing adjacency segments.
+      # Verify that all expected Adjacency segments are correctly visible for each interface.
       instances:
         - name: CORE-ISIS
           vrf: default
@@ -1231,7 +620,7 @@ anta.tests.routing.isis:
               address: 10.0.1.3
               sid_origin: dynamic
   - VerifyISISSegmentRoutingDataplane:
-      # Verifies IS-IS segment routing data-plane configuration.
+      # Verify dataplane of a list of ISIS-SR instances.
       instances:
         - name: CORE-ISIS
           vrf: default
@@ -1259,21 +648,6 @@ anta.tests.routing.ospf:
       number: 3
   - VerifyOSPFNeighborState:
       # Verifies all OSPF neighbors are in FULL state.
-  - VerifyOSPFSpecificNeighbors:
-      # Verifies OSPF specific neighbors.
-      neighbors:
-        - instance: 100
-          vrf: default
-          ip_address: 10.1.255.46
-          local_interface: Ethernet2
-          area_id: 0  # Support for decimal format
-          state: full
-        - instance: 200
-          vrf: DEV
-          ip_address: 10.9.1.1
-          local_interface: Vlan911
-          area_id: 0.0.0.1  # Support for IP address format
-          state: 2Ways
 anta.tests.security:
   - VerifyAPIHttpStatus:
       # Verifies if eAPI HTTP server is disabled globally.
@@ -1289,7 +663,7 @@ anta.tests.security:
       number: 3
       vrf: default
   - VerifyAPISSLCertificate:
-      # Verifies the eAPI SSL certificate expiry, common subject name, encryption algorithm and key size.
+      # Verifies the eAPI SSL certificate.
       certificates:
         - certificate_name: ARISTA_SIGNING_CA.crt
           expiry_threshold: 30
@@ -1303,14 +677,13 @@ anta.tests.security:
           key_size: 4096
   - VerifyBannerLogin:
       # Verifies the login banner of a device.
-      login_banner: |2+
+      login_banner: |
         # Copyright (c) 2023-2024 Arista Networks, Inc.
         # Use of this source code is governed by the Apache License 2.0
         # that can be found in the LICENSE file.
-
   - VerifyBannerMotd:
       # Verifies the motd banner of a device.
-      motd_banner: |2+
+      motd_banner: |
         # Copyright (c) 2023-2024 Arista Networks, Inc.
         # Use of this source code is governed by the Apache License 2.0
         # that can be found in the LICENSE file.
@@ -1319,7 +692,7 @@ anta.tests.security:
   - VerifyIPSecConnHealth:
       # Verifies all IPv4 security connections.
   - VerifyIPv4ACL:
-      # Verifies the configuration of IPv4 ACLs.
+      # Verifies the IPv4 ACLs.
       ipv4_access_lists:
         - name: default-control-plane-acl
           entries:
@@ -1335,8 +708,6 @@ anta.tests.security:
               action: permit icmp any any
             - sequence: 20
               action: permit tcp any any range 5900 5910
-  - VerifySSHFIPSRestrictions:
-      # Verifies that FIPS restrictions are enabled in management SSH.
   - VerifySSHIPv4Acl:
       # Verifies if the SSHD agent has IPv4 ACL(s) configured.
       number: 3
@@ -1396,21 +767,6 @@ anta.tests.snmp:
       # Verifies the SNMP error counters.
       error_counters:
         - inVersionErrs
-        - inBadCommunityNames
-  - VerifySnmpGroup:
-      # Verifies the SNMP group configurations for specified version(s).
-      snmp_groups:
-        - group_name: Group1
-          version: v1
-          read_view: group_read_1
-          write_view: group_write_1
-          notify_view: group_notify_1
-        - group_name: Group2
-          version: v3
-          read_view: group_read_2
-          write_view: group_write_2
-          notify_view: group_notify_2
-          authentication: priv
   - VerifySnmpHostLogging:
       # Verifies SNMP logging configurations.
       hosts:
@@ -1429,33 +785,11 @@ anta.tests.snmp:
   - VerifySnmpLocation:
       # Verifies the SNMP location of a device.
       location: New York
-  - VerifySnmpNotificationHost:
-      # Verifies the SNMP notification host(s) (SNMP manager) configurations.
-      notification_hosts:
-        - hostname: spine
-          vrf: default
-          notification_type: trap
-          version: v1
-          udp_port: 162
-          community_string: public
-        - hostname: 192.168.1.100
-          vrf: default
-          notification_type: trap
-          version: v3
-          udp_port: 162
-          user: public
   - VerifySnmpPDUCounters:
       # Verifies the SNMP PDU counters.
       pdus:
         - outTrapPdus
         - inGetNextPdus
-  - VerifySnmpSourceInterface:
-      # Verifies SNMP source interfaces.
-      interfaces:
-        - interface: Ethernet1
-          vrf: default
-        - interface: Management0
-          vrf: MGMT
   - VerifySnmpStatus:
       # Verifies if the SNMP agent is enabled.
       vrf: default
@@ -1485,12 +819,6 @@ anta.tests.stp:
       # Verifies there is no STP blocked ports.
   - VerifySTPCounters:
       # Verifies there is no errors in STP BPDU packets.
-      interfaces:
-        - Ethernet10
-        - Ethernet12
-      ignored_interfaces:
-        - Vxlan1
-        - Loopback0
   - VerifySTPDisabledVlans:
       # Verifies the STP disabled VLAN(s).
       vlans:
@@ -1541,24 +869,11 @@ anta.tests.system:
   - VerifyAgentLogs:
       # Verifies there are no agent crash reports.
   - VerifyCPUUtilization:
-      # Verifies that the CPU utilization of the device is within the configured threshold.
-      threshold: 75.0
-      period: 5
+      # Verifies whether the CPU utilization is below 75%.
   - VerifyCoredump:
       # Verifies there are no core dump files.
-  - VerifyFilePresence:
-      # Verifies the presence of files on the device flash memory.
-      filenames:
-        - script.py
-      check_peer_supervisor: true
   - VerifyFileSystemUtilization:
       # Verifies that no partition is utilizing more than 75% of its disk space.
-  - VerifyFlashUtilization:
-      # Verifies the free space on the flash drive is sufficient.
-      max_utilization: 70
-      check_peer_supervisor: True
-  - VerifyMaintenance:
-      # Verifies that the device is not currently under or entering maintenance.
   - VerifyMemoryUtilization:
       # Verifies whether the memory utilization is below 75%.
   - VerifyNTP:
@@ -1573,17 +888,8 @@ anta.tests.system:
           stratum: 2
         - server_address: 3.3.3.3
           stratum: 2
-  - VerifyNTPAssociations:
-      ntp_pool:
-        server_addresses: [1.1.1.1, 2.2.2.2]
-        preferred_stratum_range: [1,3]
   - VerifyReloadCause:
       # Verifies the last reload cause of the device.
-      allowed_causes:
-        - USER
-        - FPGA
-        - ZTP
-        - USER_HITLESS
   - VerifyUptime:
       # Verifies the device uptime.
       minimum: 86400
@@ -1599,34 +905,22 @@ anta.tests.vlan:
       policy: ascending
       start_vlan_id: 1006
       end_vlan_id: 4094
-  - VerifyVlanStatus:
-      # Verifies the administrative status of specified VLANs.
-      vlans:
-        - vlan_id: 10
-          status: suspended
-        - vlan_id: 4094
-          status: active
 anta.tests.vxlan:
   - VerifyVxlan1ConnSettings:
-      # Verifies Vxlan1 source interface and UDP port.
+      # Verifies the interface vxlan1 source interface and UDP port.
       source_interface: Loopback1
       udp_port: 4789
   - VerifyVxlan1Interface:
       # Verifies the Vxlan1 interface status.
-  - VerifyVxlan1VVTEPIPAddresses:
-      # Verifies the VVTEP IP addresses.
-      ipv4_address: 5.5.5.5
-      ipv6_address: fd00:dc:1::1
   - VerifyVxlanConfigSanity:
       # Verifies there are no VXLAN config-sanity inconsistencies.
   - VerifyVxlanVniBinding:
-      # Verifies the VNI-VLAN, VNI-VRF bindings of the Vxlan1 interface.
+      # Verifies the VNI-VLAN bindings of the Vxlan1 interface.
       bindings:
         10010: 10
         10020: 20
-        500: PROD
   - VerifyVxlanVtep:
-      # Verifies Vxlan1 VTEP peers.
+      # Verifies the VTEP peers of the Vxlan1 interface.
       vteps:
         - 10.1.1.5
         - 10.1.1.6

@@ -1,32 +1,22 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Module related to system-level features and protocols tests."""
 
-# Pyright does not understand AntaTest.Input typing
-# pyright: reportAttributeAccessIssue=false
+# Mypy does not understand AntaTest.Input typing
+# mypy: disable-error-code=attr-defined
 from __future__ import annotations
 
 import re
-from json import JSONDecodeError, loads
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, ClassVar
 
-from pydantic import Field, model_validator
-
-from anta.custom_types import Hostname, Percent, PositiveInteger, ReloadCause
-from anta.decorators import skip_on_platforms
-from anta.input_models.system import NTPPool, NTPServer
-from anta.models import AntaCommand, AntaTemplate, AntaTest
-from anta.tools import get_item, get_value
+from anta.custom_types import PositiveInteger
+from anta.input_models.system import NTPServer
+from anta.models import AntaCommand, AntaTest
+from anta.tools import get_value
 
 if TYPE_CHECKING:
-    import sys
-    from ipaddress import IPv4Address
-
-    if sys.version_info >= (3, 11):
-        from typing import Self
-    else:
-        from typing_extensions import Self
+    from anta.models import AntaTemplate
 
 CPU_IDLE_THRESHOLD = 25
 MEMORY_THRESHOLD = 0.25
@@ -34,7 +24,7 @@ DISK_SPACE_THRESHOLD = 75
 
 
 class VerifyUptime(AntaTest):
-    """Verifies the device uptime.
+    """Verifies if the device uptime is higher than the provided minimum uptime value.
 
     Expected Results
     ----------------
@@ -50,6 +40,7 @@ class VerifyUptime(AntaTest):
     ```
     """
 
+    description = "Verifies the device uptime."
     categories: ClassVar[list[str]] = ["system"]
     commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaCommand(command="show uptime", revision=1)]
 
@@ -62,28 +53,20 @@ class VerifyUptime(AntaTest):
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyUptime."""
-        self.result.is_success()
         command_output = self.instance_commands[0].json_output
-        if command_output["upTime"] < self.inputs.minimum:
-            self.result.is_failure(f"Device uptime is incorrect - Expected: {self.inputs.minimum}s Actual: {command_output['upTime']}s")
+        if command_output["upTime"] > self.inputs.minimum:
+            self.result.is_success()
+        else:
+            self.result.is_failure(f"Device uptime is {command_output['upTime']} seconds")
 
 
 class VerifyReloadCause(AntaTest):
     """Verifies the last reload cause of the device.
 
-    User Input to Reload Cause Mapping:
-
-    | Input Value   | Mapped To                                     |
-    |---------------|-----------------------------------------------|
-    | USER          | Reload requested by the user.                 |
-    | FPGA          | Reload requested after FPGA upgrade           |
-    | ZTP           | System reloaded due to Zero Touch Provisioning|
-    | USER_HITLESS  | Hitless reload requested by the user.         |
-
     Expected Results
     ----------------
-    * Success: The test passes if there is no reload cause, or if the last reload cause was one of the provided inputs.
-    * Failure: The test will fail if the last reload cause was NOT one of the provided inputs.
+    * Success: The test will pass if there are NO reload causes or if the last reload was caused by the user or after an FPGA upgrade.
+    * Failure: The test will fail if the last reload was NOT caused by the user or after an FPGA upgrade.
     * Error: The test will report an error if the reload cause is NOT available.
 
     Examples
@@ -91,22 +74,11 @@ class VerifyReloadCause(AntaTest):
     ```yaml
     anta.tests.system:
       - VerifyReloadCause:
-          allowed_causes:
-            - USER
-            - FPGA
-            - ZTP
-            - USER_HITLESS
     ```
     """
 
     categories: ClassVar[list[str]] = ["system"]
     commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaCommand(command="show reload cause", revision=1)]
-
-    class Input(AntaTest.Input):
-        """Input model for the VerifyReloadCause test."""
-
-        allowed_causes: list[ReloadCause] = Field(default=["USER", "FPGA"], validate_default=True)
-        """A list of allowed system reload causes."""
 
     @AntaTest.anta_test
     def test(self) -> None:
@@ -116,18 +88,19 @@ class VerifyReloadCause(AntaTest):
             # No reload causes
             self.result.is_success()
             return
-
         reset_causes = command_output["resetCauses"]
         command_output_data = reset_causes[0].get("description")
-        if command_output_data in self.inputs.allowed_causes:
+        if command_output_data in [
+            "Reload requested by the user.",
+            "Reload requested after FPGA upgrade",
+        ]:
             self.result.is_success()
         else:
-            causes = ", ".join(f"'{c}'" for c in self.inputs.allowed_causes)
-            self.result.is_failure(f"Invalid reload cause -  Expected: {causes} Actual: '{command_output_data}'")
+            self.result.is_failure(f"Reload cause is: '{command_output_data}'")
 
 
 class VerifyCoredump(AntaTest):
-    """Verifies there are no core dump files.
+    """Verifies if there are core dump files in the /var/core directory.
 
     Expected Results
     ----------------
@@ -146,6 +119,7 @@ class VerifyCoredump(AntaTest):
     ```
     """
 
+    description = "Verifies there are no core dump files."
     categories: ClassVar[list[str]] = ["system"]
     commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaCommand(command="show system coredump", revision=1)]
 
@@ -159,7 +133,7 @@ class VerifyCoredump(AntaTest):
         if not core_files:
             self.result.is_success()
         else:
-            self.result.is_failure(f"Core dump(s) have been found: {', '.join(core_files)}")
+            self.result.is_failure(f"Core dump(s) have been found: {core_files}")
 
 
 class VerifyAgentLogs(AntaTest):
@@ -194,70 +168,33 @@ class VerifyAgentLogs(AntaTest):
 
 
 class VerifyCPUUtilization(AntaTest):
-    """Verifies that the CPU utilization of the device is within the configured threshold.
-
-    !!! tip
-        Specify a load average period in the test input to avoid false positives.
-        Without it, the test verifies instantaneous CPU utilization, which can spike when multiple tests run concurrently.
+    """Verifies whether the CPU utilization is below 75%.
 
     Expected Results
     ----------------
-    * Success: The test will pass if the CPU utilization is below the threshold.
-    * Failure: The test will fail if the CPU utilization exceeds the threshold.
+    * Success: The test will pass if the CPU utilization is below 75%.
+    * Failure: The test will fail if the CPU utilization is over 75%.
 
     Examples
     --------
     ```yaml
     anta.tests.system:
       - VerifyCPUUtilization:
-          threshold: 75.0
-          period: 5
     ```
     """
 
     categories: ClassVar[list[str]] = ["system"]
-    commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaTemplate(template="show processes top once", revision=1)]
-
-    class Input(AntaTest.Input):
-        """Input model for the VerifyCPUUtilization test."""
-
-        threshold: float = Field(default=75.0, ge=0.0, le=100.0)
-        """CPU utilization threshold as a percentage."""
-        period: Literal[1, 5, 15] | None = None
-        """Load average period in minutes (1, 5, or 15).
-
-        If set, the test uses the normalized load average (load_avg / num_cores * 100) for the given period.
-        Otherwise, the test checks instantaneous CPU utilization (100 - idle).
-        """
-
-    def render(self, template: AntaTemplate) -> list[AntaCommand]:
-        """Render the show processes command, appending nproc when a load average period is requested."""
-        commands = [template.render()]
-        if self.inputs.period is not None:
-            commands.append(AntaCommand(command="bash timeout 10 nproc", ofmt="text"))
-        return commands
+    commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaCommand(command="show processes top once", revision=1)]
 
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyCPUUtilization."""
-        self.result.is_success()
         command_output = self.instance_commands[0].json_output
-        if self.inputs.period is None:
-            cpu_idle_percentage = command_output["cpuInfo"]["%Cpu(s)"]["idle"]
-            cpu_utilization = 100.0 - cpu_idle_percentage
-            if cpu_utilization > self.inputs.threshold:
-                self.result.is_failure(f"CPU utilization is above the threshold - Expected: < {self.inputs.threshold}% Actual: {cpu_utilization:.1f}%")
+        command_output_data = command_output["cpuInfo"]["%Cpu(s)"]["idle"]
+        if command_output_data > CPU_IDLE_THRESHOLD:
+            self.result.is_success()
         else:
-            # Maps period minutes (1, 5, 15) to the corresponding index in the loadAvg array.
-            period_index = {1: 0, 5: 1, 15: 2}[self.inputs.period]
-            load_avg = command_output["timeInfo"]["loadAvg"][period_index]
-            num_cores = int(self.instance_commands[1].text_output.strip())
-            # Express load average as a percentage of total CPU capacity.
-            cpu_load_percentage = (load_avg / num_cores) * 100.0
-            if cpu_load_percentage > self.inputs.threshold:
-                self.result.is_failure(
-                    f"CPU load average ({self.inputs.period} min) is above the threshold - Expected: < {self.inputs.threshold}% Actual: {cpu_load_percentage:.1f}%"
-                )
+            self.result.is_failure(f"Device has reported a high CPU utilization: {100 - command_output_data}%")
 
 
 class VerifyMemoryUtilization(AntaTest):
@@ -282,11 +219,12 @@ class VerifyMemoryUtilization(AntaTest):
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyMemoryUtilization."""
-        self.result.is_success()
         command_output = self.instance_commands[0].json_output
         memory_usage = command_output["memFree"] / command_output["memTotal"]
-        if memory_usage < MEMORY_THRESHOLD:
-            self.result.is_failure(f"Device has reported a high memory usage - Expected: < 75% Actual: {(1 - memory_usage) * 100:.2f}%")
+        if memory_usage > MEMORY_THRESHOLD:
+            self.result.is_success()
+        else:
+            self.result.is_failure(f"Device has reported a high memory usage: {(1 - memory_usage) * 100:.2f}%")
 
 
 class VerifyFileSystemUtilization(AntaTest):
@@ -315,11 +253,11 @@ class VerifyFileSystemUtilization(AntaTest):
         self.result.is_success()
         for line in command_output.split("\n")[1:]:
             if "loop" not in line and len(line) > 0 and (percentage := int(line.split()[4].replace("%", ""))) > DISK_SPACE_THRESHOLD:
-                self.result.is_failure(f"Mount point: {line} - Higher disk space utilization - Expected: {DISK_SPACE_THRESHOLD}% Actual: {percentage}%")
+                self.result.is_failure(f"Mount point {line} is higher than 75%: reported {percentage}%")
 
 
 class VerifyNTP(AntaTest):
-    """Verifies if NTP is synchronised.
+    """Verifies that the Network Time Protocol (NTP) is synchronized.
 
     Expected Results
     ----------------
@@ -334,6 +272,7 @@ class VerifyNTP(AntaTest):
     ```
     """
 
+    description = "Verifies if NTP is synchronised."
     categories: ClassVar[list[str]] = ["system"]
     commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaCommand(command="show ntp status", ofmt="text")]
 
@@ -345,27 +284,18 @@ class VerifyNTP(AntaTest):
             self.result.is_success()
         else:
             data = command_output.split("\n")[0]
-            self.result.is_failure(f"NTP status mismatch - Expected: synchronised Actual: {data}")
+            self.result.is_failure(f"The device is not synchronized with the configured NTP server(s): '{data}'")
 
 
 class VerifyNTPAssociations(AntaTest):
     """Verifies the Network Time Protocol (NTP) associations.
 
-    This test performs the following checks:
-
-      1. For the NTP servers:
-        - The primary NTP server (marked as preferred) has the condition 'sys.peer'.
-        - All other NTP servers have the condition 'candidate'.
-        - All the NTP servers have the expected stratum level.
-      2. For the NTP servers pool:
-        - All the NTP servers belong to the specified NTP pool.
-        - All the NTP servers have valid condition (sys.peer | candidate).
-        - All the NTP servers have the stratum level within the specified startum level.
-
     Expected Results
     ----------------
-    * Success: The test will pass if all the NTP servers meet the expected state.
-    * Failure: The test will fail if any of the NTP server does not meet the expected state.
+    * Success: The test will pass if the Primary NTP server (marked as preferred) has the condition 'sys.peer' and
+    all other NTP servers have the condition 'candidate'.
+    * Failure: The test will fail if the Primary NTP server (marked as preferred) does not have the condition 'sys.peer' or
+    if any other NTP server does not have the condition 'candidate'.
 
     Examples
     --------
@@ -380,10 +310,6 @@ class VerifyNTPAssociations(AntaTest):
               stratum: 2
             - server_address: 3.3.3.3
               stratum: 2
-      - VerifyNTPAssociations:
-          ntp_pool:
-            server_addresses: [1.1.1.1, 2.2.2.2]
-            preferred_stratum_range: [1,3]
     ```
     """
 
@@ -393,78 +319,9 @@ class VerifyNTPAssociations(AntaTest):
     class Input(AntaTest.Input):
         """Input model for the VerifyNTPAssociations test."""
 
-        ntp_servers: list[NTPServer] | None = None
+        ntp_servers: list[NTPServer]
         """List of NTP servers."""
-        ntp_pool: NTPPool | None = None
-        """NTP servers pool."""
         NTPServer: ClassVar[type[NTPServer]] = NTPServer
-
-        @model_validator(mode="after")
-        def validate_inputs(self) -> Self:
-            """Validate the inputs provided to the VerifyNTPAssociations test.
-
-            Either `ntp_servers` or `ntp_pool` can be provided at the same time.
-            """
-            if not self.ntp_servers and not self.ntp_pool:
-                msg = "'ntp_servers' or 'ntp_pool' must be provided"
-                raise ValueError(msg)
-            if self.ntp_servers and self.ntp_pool:
-                msg = "Either 'ntp_servers' or 'ntp_pool' can be provided at the same time"
-                raise ValueError(msg)
-
-            # Verifies the len of preferred_stratum_range in NTP Pool should be 2 as this is the range.
-            stratum_range = 2
-            if self.ntp_pool and len(self.ntp_pool.preferred_stratum_range) > stratum_range:
-                msg = "'preferred_stratum_range' list should have at most 2 items"
-                raise ValueError(msg)
-            return self
-
-    def _validate_ntp_server(self, ntp_server: NTPServer, peers: dict[str, Any]) -> list[str]:
-        """Validate the NTP server, condition and stratum level."""
-        failure_msgs: list[str] = []
-        server_address = str(ntp_server.server_address)
-
-        # We check `peerIpAddr` in the peer details - covering IPv4Address input, or the peer key - covering Hostname input.
-        matching_peer = next((peer for peer, peer_details in peers.items() if (server_address in {peer_details["peerIpAddr"], peer})), None)
-
-        if not matching_peer:
-            failure_msgs.append(f"{ntp_server} - Not configured")
-            return failure_msgs
-
-        # Collecting the expected/actual NTP peer details.
-        exp_condition = "sys.peer" if ntp_server.preferred else "candidate"
-        exp_stratum = ntp_server.stratum
-        act_condition = get_value(peers[matching_peer], "condition")
-        act_stratum = get_value(peers[matching_peer], "stratumLevel")
-
-        if act_condition != exp_condition:
-            failure_msgs.append(f"{ntp_server} - Incorrect condition - Expected: {exp_condition} Actual: {act_condition}")
-
-        if act_stratum != exp_stratum:
-            failure_msgs.append(f"{ntp_server} - Incorrect stratum level - Expected: {exp_stratum} Actual: {act_stratum}")
-
-        return failure_msgs
-
-    def _validate_ntp_pool(self, server_addresses: list[Hostname | IPv4Address], peer: str, stratum_range: list[int], peer_details: dict[str, Any]) -> list[str]:
-        """Validate the NTP server pool, condition and stratum level."""
-        failure_msgs: list[str] = []
-
-        # We check `peerIpAddr` and `peer` in the peer details - covering server_addresses input
-        if (peer_ip := peer_details["peerIpAddr"]) not in server_addresses and peer not in server_addresses:
-            failure_msgs.append(f"NTP Server: {peer_ip} Hostname: {peer} - Associated but not part of the provided NTP pool")
-            return failure_msgs
-
-        act_condition = get_value(peer_details, "condition")
-        act_stratum = get_value(peer_details, "stratumLevel")
-
-        if act_condition not in ["sys.peer", "candidate"]:
-            failure_msgs.append(f"NTP Server: {peer_ip} Hostname: {peer} - Incorrect condition  - Expected: sys.peer, candidate Actual: {act_condition}")
-
-        if int(act_stratum) not in range(stratum_range[0], stratum_range[1] + 1):
-            msg = f"Expected Stratum Range: {stratum_range[0]} to {stratum_range[1]} Actual: {act_stratum}"
-            failure_msgs.append(f"NTP Server: {peer_ip} Hostname: {peer} - Incorrect stratum level - {msg}")
-
-        return failure_msgs
 
     @AntaTest.anta_test
     def test(self) -> None:
@@ -475,197 +332,22 @@ class VerifyNTPAssociations(AntaTest):
             self.result.is_failure("No NTP peers configured")
             return
 
-        if self.inputs.ntp_servers:
-            # Iterate over each NTP server.
-            for ntp_server in self.inputs.ntp_servers:
-                failure_msgs = self._validate_ntp_server(ntp_server, peers)
-                for msg in failure_msgs:
-                    self.result.is_failure(msg)
-            return
+        # Iterate over each NTP server.
+        for ntp_server in self.inputs.ntp_servers:
+            server_address = str(ntp_server.server_address)
 
-        # Verifies the NTP pool details
-        server_addresses = self.inputs.ntp_pool.server_addresses
-        exp_stratum_range = self.inputs.ntp_pool.preferred_stratum_range
-        for peer, peer_details in peers.items():
-            failure_msgs = self._validate_ntp_pool(server_addresses, peer, exp_stratum_range, peer_details)
-            for msg in failure_msgs:
-                self.result.is_failure(msg)
+            # We check `peerIpAddr` in the peer details - covering IPv4Address input, or the peer key - covering Hostname input.
+            matching_peer = next((peer for peer, peer_details in peers.items() if (server_address in {peer_details["peerIpAddr"], peer})), None)
 
+            if not matching_peer:
+                self.result.is_failure(f"{ntp_server} - Not configured")
+                continue
 
-class VerifyMaintenance(AntaTest):
-    """Verifies that the device is not currently under or entering maintenance.
+            # Collecting the expected/actual NTP peer details.
+            exp_condition = "sys.peer" if ntp_server.preferred else "candidate"
+            exp_stratum = ntp_server.stratum
+            act_condition = get_value(peers[matching_peer], "condition")
+            act_stratum = get_value(peers[matching_peer], "stratumLevel")
 
-    Expected Results
-    ----------------
-    * Success: The test will pass if the device is not under or entering maintenance.
-    * Failure: The test will fail if the device is under or entering maintenance.
-
-    Examples
-    --------
-    ```yaml
-    anta.tests.system:
-      - VerifyMaintenance:
-    ```
-    """
-
-    categories: ClassVar[list[str]] = ["system"]
-    commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaCommand(command="show maintenance", revision=1)]
-
-    @AntaTest.anta_test
-    def test(self) -> None:
-        """Main test function for VerifyMaintenance."""
-        self.result.is_success()
-
-        # If units is not empty we have to examine the output for details.
-        if not (units := get_value(self.instance_commands[0].json_output, "units")):
-            return
-        units_under_maintenance = [unit for unit, info in units.items() if info["state"] == "underMaintenance"]
-        units_entering_maintenance = [unit for unit, info in units.items() if info["state"] == "maintenanceModeEnter"]
-        causes = set()
-        # Iterate over units, check for units under or entering maintenance, and examine the causes.
-        for info in units.values():
-            if info["adminState"] == "underMaintenance":
-                causes.add("Quiesce is configured")
-            if info["onBootMaintenance"]:
-                causes.add("On-boot maintenance is configured")
-            if info["intfsViolatingTrafficThreshold"]:
-                causes.add("Interface traffic threshold violation")
-
-        # Building the error message.
-        if units_under_maintenance:
-            self.result.is_failure(f"Units under maintenance: '{', '.join(units_under_maintenance)}'")
-        if units_entering_maintenance:
-            self.result.is_failure(f"Units entering maintenance: '{', '.join(units_entering_maintenance)}'")
-        if causes:
-            self.result.is_failure(f"Possible causes: '{', '.join(sorted(causes))}'")
-
-
-class VerifyFlashUtilization(AntaTest):
-    """Verifies the free space on the flash drive is sufficient.
-
-    Expected Results
-    ----------------
-    * Success: The test will pass if flash utilization is below the defined threshold.
-    * Failure: The test will fail if flash utilization is above the defined threshold.
-
-    Examples
-    --------
-    ```yaml
-    anta.tests.system:
-      - VerifyFlashUtilization:
-          max_utilization: 70
-          check_peer_supervisor: True
-    ```
-    """
-
-    categories: ClassVar[list[str]] = ["hardware"]
-    commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaTemplate(template="{command}", revision=1)]
-
-    class Input(AntaTest.Input):
-        """Input model for the VerifyFlashUtilization test."""
-
-        max_utilization: Percent = 70
-        """The maximum allowed percentage of flash memory utilization."""
-        check_peer_supervisor: bool = False
-        """If True, also verifies the peer supervisor flash drive on dual-supervisor systems."""
-
-    def render(self, template: AntaTemplate) -> list[AntaCommand]:
-        """Render the template for peer supervisor."""
-        if self.inputs.check_peer_supervisor:
-            return [
-                template.render(command="show file systems"),
-                template.render(command="session peer-supervisor show file systems | json"),
-            ]
-        return [template.render(command="show file systems")]
-
-    def _check_supervisor(self, output: dict[str, Any], supervisor_name: Literal["Active", "Standby"]) -> None:
-        """Get and verify flash utilization for a single supervisor."""
-        msg_prefix = f"{supervisor_name} Supervisor - " if self.inputs.check_peer_supervisor else ""
-
-        if (drive_details := get_item(output["fileSystems"], "prefix", "flash:")) is None:
-            self.result.is_failure(f"{msg_prefix}Flash not found")
-            return
-
-        free = int(drive_details["free"])
-        size = int(drive_details["size"])
-
-        if size == 0:
-            self.result.is_failure(f"{msg_prefix}Flash reported a size of 0")
-            return
-
-        utilization = round(100 - (free / size) * 100, 2)
-
-        if utilization > self.inputs.max_utilization:
-            self.result.is_failure(f"{msg_prefix}Flash utilization above threshold - Expected: <= {self.inputs.max_utilization}% Actual: {utilization}%")
-
-    @skip_on_platforms(["cEOSLab", "vEOS-lab", "cEOSCloudLab", "vEOS"])
-    @AntaTest.anta_test
-    def test(self) -> None:
-        """Main test function for VerifyFlashUtilization."""
-        self.result.is_success()
-        self._check_supervisor(self.instance_commands[0].json_output, supervisor_name="Active")
-
-        # If dual-supervisor systems
-        if self.inputs.check_peer_supervisor:
-            try:
-                # This block will safely handle issues with the peer supervisor output
-                peer_output_str = self.instance_commands[1].json_output["output"]
-                output = loads(peer_output_str)
-                self._check_supervisor(output, supervisor_name="Standby")
-            except (KeyError, JSONDecodeError, TypeError) as exc:
-                self.result.is_failure(f"Standby Supervisor - Failed to parse command output - {exc!s}")
-
-
-class VerifyFilePresence(AntaTest):
-    """Verifies the presence of files on the device flash memory.
-
-    Expected Results
-    ----------------
-    * Success: The test will pass if all specified files are found on the flash drive.
-    * Failure: The test will fail if any file is not found.
-
-    Examples
-    --------
-    ```yaml
-    anta.tests.system:
-      - VerifyFilePresence:
-          filenames:
-            - script.py
-          check_peer_supervisor: true
-    ```
-    """
-
-    categories: ClassVar[list[str]] = ["system"]
-    commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaTemplate(template="dir {flash_memory}", revision=2)]
-
-    class Input(AntaTest.Input):
-        """Input model for the VerifyFilePresence test."""
-
-        filenames: list[str]
-        """List of files to verify, including their extensions if any."""
-        check_peer_supervisor: bool = False
-        """If True, also verifies the peer supervisor flash drive on dual-supervisor systems."""
-
-    def render(self, template: AntaTemplate) -> list[AntaCommand]:
-        """Render the template as per the input."""
-        if self.inputs.check_peer_supervisor:
-            return [template.render(flash_memory="flash:/"), template.render(flash_memory="supervisor-peer:/mnt/flash")]
-        return [template.render(flash_memory="flash:/")]
-
-    @AntaTest.anta_test
-    def test(self) -> None:
-        """Main test function for VerifyFilePresence."""
-        self.result.is_success()
-
-        # Verify the active supervisor
-        directories = self.instance_commands[0].json_output
-        for filename in self.inputs.filenames:
-            if not get_value(directories, f"urls..{self.instance_commands[0].params.flash_memory}..entries..{filename}", separator=".."):
-                self.result.is_failure(f"File: {filename} - Not found")
-
-        # Verify the standby supervisor
-        if self.inputs.check_peer_supervisor:
-            peer_directories = self.instance_commands[1].json_output
-            for filename in self.inputs.filenames:
-                if not get_value(peer_directories, f"urls..{self.instance_commands[1].params.flash_memory}..entries..{filename}", separator=".."):
-                    self.result.is_failure(f"File: {filename} - Not found on standby supervisor")
+            if act_condition != exp_condition or act_stratum != exp_stratum:
+                self.result.is_failure(f"{ntp_server} - Bad association - Condition: {act_condition}, Stratum: {act_stratum}")

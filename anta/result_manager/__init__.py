@@ -1,73 +1,80 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Result Manager module for ANTA."""
 
 from __future__ import annotations
 
+import json
 import logging
+import warnings
 from collections import defaultdict
 from functools import cached_property
 from itertools import chain
 from typing import Any
 
-from pydantic import TypeAdapter
-from typing_extensions import deprecated
-
-from anta.result_manager.models import _STATUS_PRIORITY, AntaTestStatus, TestResult
+from anta.result_manager.models import AntaTestStatus, TestResult
 
 from .models import CategoryStats, DeviceStats, TestStats
 
 logger = logging.getLogger(__name__)
 
 
-# The TypeAdapter is used to conveniently be able to dump the ResultManager later.
-# https://docs.pydantic.dev/latest/api/type_adapter/
-ResultManagerTypeAdapter = TypeAdapter(list[TestResult])
-
-
+# pylint: disable=too-many-instance-attributes
 class ResultManager:
-    """Manager of ANTA Results.
+    """Helper to manage Test Results and generate reports.
 
-    The status of the class is initialized to "unset"
+    Examples
+    --------
+    Create Inventory:
 
-    When adding a test with a status that is not `error`, the overall status is
-    updated according to the following precedence:
-    `failure` > `success` > `skipped`/`unset`.
+        inventory_anta = AntaInventory.parse(
+            filename='examples/inventory.yml',
+            username='ansible',
+            password='ansible',
+        )
 
-    | Current Status | Added test Status                | Updated Status |
-    | -------------- | -------------------------------- | -------------- |
-    | unset          | Any                              | Any            |
-    | skipped        | unset, skipped                   | skipped        |
-    | skipped        | success                          | success        |
-    | skipped        | failure                          | failure        |
-    | success        | unset, skipped, success          | success        |
-    | success        | failure                          | failure        |
-    | failure        | Any status except error          | failure        |
+    Create Result Manager:
 
-    If the status of the added test is error, the status is untouched and the
-    `error_status` attribute is set to True.
+        manager = ResultManager()
 
-    Attributes
-    ----------
-    results
-    dump
-    status
-        Status representing all the results.
-    error_status
-        Will be `True` if a test returned an error.
-    results_by_status
-    dump
-    json
-    device_stats
-    category_stats
-    test_stats
+    Run tests for all connected devices:
+
+        for device in inventory_anta.get_inventory().devices:
+            manager.add(
+                VerifyNTP(device=device).test()
+            )
+            manager.add(
+                VerifyEOSVersion(device=device).test(version='4.28.3M')
+            )
+
+    Print result in native format:
+
+        manager.results
+        [
+            TestResult(
+                name="pf1",
+                test="VerifyZeroTouch",
+                categories=["configuration"],
+                description="Verifies ZeroTouch is disabled",
+                result="success",
+                messages=[],
+                custom_field=None,
+            ),
+            TestResult(
+                name="pf1",
+                test='VerifyNTP',
+                categories=["software"],
+                categories=['system'],
+                description='Verifies if NTP is synchronised.',
+                result='failure',
+                messages=["The device is not synchronized with the configured NTP server(s): 'NTP is disabled.'"],
+                custom_field=None,
+            ),
+        ]
     """
 
-    # TODO: Remove the following pylint disable once deprecated methods are removed.
-    # pylint: disable=too-many-public-methods
-
-    _results: list[TestResult]
+    _result_entries: list[TestResult]
     status: AntaTestStatus
     error_status: bool
 
@@ -77,13 +84,32 @@ class ResultManager:
     _stats_in_sync: bool
 
     def __init__(self) -> None:
-        """Initialize a ResultManager instance."""
+        """Class constructor.
+
+        The status of the class is initialized to "unset"
+
+        Then when adding a test with a status that is NOT 'error' the following
+        table shows the updated status:
+
+        | Current Status |         Added test Status       | Updated Status |
+        | -------------- | ------------------------------- | -------------- |
+        |      unset     |              Any                |       Any      |
+        |     skipped    |         unset, skipped          |     skipped    |
+        |     skipped    |            success              |     success    |
+        |     skipped    |            failure              |     failure    |
+        |     success    |     unset, skipped, success     |     success    |
+        |     success    |            failure              |     failure    |
+        |     failure    | unset, skipped success, failure |     failure    |
+
+        If the status of the added test is error, the status is untouched and the
+        error_status is set to True.
+        """
         self.reset()
 
     def reset(self) -> None:
         """Create or reset the attributes of the ResultManager instance."""
-        self._results = []
-        self.status = AntaTestStatus.UNSET
+        self._result_entries: list[TestResult] = []
+        self.status: AntaTestStatus = AntaTestStatus.UNSET
         self.error_status = False
 
         # Initialize the statistics attributes
@@ -91,12 +117,12 @@ class ResultManager:
 
     def __len__(self) -> int:
         """Implement __len__ method to count number of results."""
-        return len(self._results)
+        return len(self._result_entries)
 
     @property
     def results(self) -> list[TestResult]:
         """Get the list of TestResult."""
-        return self._results
+        return self._result_entries
 
     @results.setter
     def results(self, value: list[TestResult]) -> None:
@@ -110,12 +136,12 @@ class ResultManager:
     @property
     def dump(self) -> list[dict[str, Any]]:
         """Get a list of dictionary of the results."""
-        return ResultManagerTypeAdapter.dump_python(self._results)
+        return [result.model_dump() for result in self._result_entries]
 
     @property
     def json(self) -> str:
         """Get a JSON representation of the results."""
-        return ResultManagerTypeAdapter.dump_json(self._results, indent=4).decode()
+        return json.dumps(self.dump, indent=4)
 
     @property
     def device_stats(self) -> dict[str, DeviceStats]:
@@ -136,20 +162,28 @@ class ResultManager:
         return dict(sorted(self._test_stats.items()))
 
     @property
-    @deprecated("This property is deprecated, use `category_stats` instead. This will be removed in ANTA v2.0.0.", category=DeprecationWarning)
     def sorted_category_stats(self) -> dict[str, CategoryStats]:
-        """A property that returns the category_stats dictionary sorted by key name."""
+        """A property that returns the category_stats dictionary sorted by key name.
+
+        Deprecated
+        ----------
+            This property is deprecated and will be removed in ANTA v2.0.0.
+            Use `category_stats` instead as it is now sorted by default.
+
+        TODO: Remove this property in ANTA v2.0.0.
+        """
+        warnings.warn(
+            "sorted_category_stats is deprecated and will be removed in ANTA v2.0.0. Use category_stats instead as it is now sorted by default.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._ensure_stats_in_sync()
         return self.category_stats
 
     @cached_property
     def results_by_status(self) -> dict[AntaTestStatus, list[TestResult]]:
         """A cached property that returns the results grouped by status."""
-        return {status: [result for result in self._results if result.result == status] for status in AntaTestStatus}
-
-    @cached_property
-    def results_by_category(self) -> list[TestResult]:
-        """A cached property that returns the list of results sorted by categories."""
-        return sorted(self._results, key=lambda res: res.categories)
+        return {status: [result for result in self._result_entries if result.result == status] for status in AntaTestStatus}
 
     def _update_status(self, test_status: AntaTestStatus) -> None:
         """Update the status of the ResultManager instance based on the test status.
@@ -162,13 +196,10 @@ class ResultManager:
         if test_status == "error":
             self.error_status = True
             return
-
-        if self.status == AntaTestStatus.UNSET:
+        if self.status == "unset" or (self.status == "skipped" and test_status in {"success", "failure"}):
             self.status = test_status
-            return
-
-        if _STATUS_PRIORITY[test_status] > _STATUS_PRIORITY[self.status]:
-            self.status = test_status
+        elif self.status == "success" and test_status == "failure":
+            self.status = AntaTestStatus.FAILURE
 
     def _reset_stats(self) -> None:
         """Create or reset the statistics attributes."""
@@ -216,7 +247,7 @@ class ResultManager:
         self._reset_stats()
 
         # Recompute stats for all results
-        for result in self._results:
+        for result in self._result_entries:
             self._update_stats(result)
 
         self._stats_in_sync = True
@@ -237,13 +268,12 @@ class ResultManager:
         result
             TestResult to add to the ResultManager instance.
         """
-        self._results.append(result)
+        self._result_entries.append(result)
         self._update_status(result.result)
         self._stats_in_sync = False
 
-        # Every time a new result is added, we need to clear the cached properties
-        for name in ["results_by_status", "results_by_category"]:
-            self.__dict__.pop(name, None)
+        # Every time a new result is added, we need to clear the cached property
+        self.__dict__.pop("results_by_status", None)
 
     def get_results(self, status: set[AntaTestStatus] | None = None, sort_by: list[str] | None = None) -> list[TestResult]:
         """Get the results, optionally filtered by status and sorted by TestResult fields.
@@ -263,14 +293,14 @@ class ResultManager:
             List of results.
         """
         # Return all results if no status is provided, otherwise return results for multiple statuses
-        results = self._results if status is None else list(chain.from_iterable(self.results_by_status.get(status, []) for status in status))
+        results = self._result_entries if status is None else list(chain.from_iterable(self.results_by_status.get(status, []) for status in status))
 
         if sort_by:
             accepted_fields = TestResult.model_fields.keys()
             if not set(sort_by).issubset(set(accepted_fields)):
                 msg = f"Invalid sort_by fields: {sort_by}. Accepted fields are: {list(accepted_fields)}"
                 raise ValueError(msg)
-            results = sorted(results, key=lambda result: [getattr(result, field) or "" for field in sort_by])
+            results = sorted(results, key=lambda result: [getattr(result, field) for field in sort_by])
 
         return results
 
@@ -312,7 +342,7 @@ class ResultManager:
         if not set(sort_by).issubset(set(accepted_fields)):
             msg = f"Invalid sort_by fields: {sort_by}. Accepted fields are: {list(accepted_fields)}"
             raise ValueError(msg)
-        self._results.sort(key=lambda result: [getattr(result, field) or "" for field in sort_by])
+        self._result_entries.sort(key=lambda result: [getattr(result, field) for field in sort_by])
         return self
 
     def filter(self, hide: set[AntaTestStatus]) -> ResultManager:
@@ -333,26 +363,6 @@ class ResultManager:
         manager.results = self.get_results(possible_statuses - hide)
         return manager
 
-    @classmethod
-    def merge_results(cls, results_managers: list[ResultManager]) -> ResultManager:
-        """Merge multiple ResultManager instances.
-
-        Parameters
-        ----------
-        results_managers
-            A list of ResultManager instances to merge.
-
-        Returns
-        -------
-        ResultManager
-            A new ResultManager instance containing the results of all the input ResultManagers.
-        """
-        combined_results = list(chain(*(rm.results for rm in results_managers)))
-        merged_manager = cls()
-        merged_manager.results = combined_results
-        return merged_manager
-
-    @deprecated("This method is deprecated. This will be removed in ANTA v2.0.0.", category=DeprecationWarning)
     def filter_by_tests(self, tests: set[str]) -> ResultManager:
         """Get a filtered ResultManager that only contains specific tests.
 
@@ -367,10 +377,9 @@ class ResultManager:
             A filtered `ResultManager`.
         """
         manager = ResultManager()
-        manager.results = [result for result in self._results if result.test in tests]
+        manager.results = [result for result in self._result_entries if result.test in tests]
         return manager
 
-    @deprecated("This method is deprecated. This will be removed in ANTA v2.0.0.", category=DeprecationWarning)
     def filter_by_devices(self, devices: set[str]) -> ResultManager:
         """Get a filtered ResultManager that only contains specific devices.
 
@@ -385,10 +394,9 @@ class ResultManager:
             A filtered `ResultManager`.
         """
         manager = ResultManager()
-        manager.results = [result for result in self._results if result.name in devices]
+        manager.results = [result for result in self._result_entries if result.name in devices]
         return manager
 
-    @deprecated("This method is deprecated. This will be removed in ANTA v2.0.0.", category=DeprecationWarning)
     def get_tests(self) -> set[str]:
         """Get the set of all the test names.
 
@@ -397,9 +405,8 @@ class ResultManager:
         set[str]
             Set of test names.
         """
-        return {str(result.test) for result in self._results}
+        return {str(result.test) for result in self._result_entries}
 
-    @deprecated("This method is deprecated. This will be removed in ANTA v2.0.0.", category=DeprecationWarning)
     def get_devices(self) -> set[str]:
         """Get the set of all the device names.
 
@@ -408,4 +415,4 @@ class ResultManager:
         set[str]
             Set of device names.
         """
-        return {str(result.name) for result in self._results}
+        return {str(result.name) for result in self._result_entries}

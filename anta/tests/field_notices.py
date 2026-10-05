@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Module related to field notices tests."""
@@ -38,7 +38,7 @@ class VerifyFieldNotice44Resolution(AntaTest):
     categories: ClassVar[list[str]] = ["field notices"]
     commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaCommand(command="show version detail", revision=1)]
 
-    @skip_on_platforms(["cEOSLab", "vEOS-lab", "cEOSCloudLab", "vEOS"])
+    @skip_on_platforms(["cEOSLab", "vEOS-lab", "cEOSCloudLab"])
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyFieldNotice44Resolution."""
@@ -96,7 +96,7 @@ class VerifyFieldNotice44Resolution(AntaTest):
         for variant in variants:
             model = model.replace(variant, "")
         if model not in devices:
-            self.result.is_skipped("Device is not impacted by FN044")
+            self.result.is_skipped("device is not impacted by FN044")
             return
 
         for component in command_output["details"]["components"]:
@@ -117,7 +117,7 @@ class VerifyFieldNotice44Resolution(AntaTest):
             )
         )
         if incorrect_aboot_version:
-            self.result.is_failure(f"Device is running incorrect version of aboot {aboot_version}")
+            self.result.is_failure(f"device is running incorrect version of aboot ({aboot_version})")
 
 
 class VerifyFieldNotice72Resolution(AntaTest):
@@ -142,7 +142,7 @@ class VerifyFieldNotice72Resolution(AntaTest):
     categories: ClassVar[list[str]] = ["field notices"]
     commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaCommand(command="show version detail", revision=1)]
 
-    @skip_on_platforms(["cEOSLab", "vEOS-lab", "cEOSCloudLab", "vEOS"])
+    @skip_on_platforms(["cEOSLab", "vEOS-lab", "cEOSCloudLab"])
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyFieldNotice72Resolution."""

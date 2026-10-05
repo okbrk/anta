@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Utils for the ANTA benchmark tests."""
@@ -15,10 +15,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from anta.catalog import AntaCatalog, AntaTestDefinition
-from anta.device import AsyncEOSDevice
-from anta.inventory import AntaInventory
 from anta.models import AntaCommand, AntaTest
-from anta.result_manager.models import AntaTestStatus
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -47,51 +44,19 @@ async def collect_commands(self: AntaDevice, commands: list[AntaCommand], collec
     await asyncio.gather(*(self.collect(command=command, collection_id=f"{collection_id}:{idx}") for idx, command in enumerate(commands)))
 
 
-def build_inventory(device_count: int) -> AntaInventory:
-    """Build a fresh inventory for one benchmark invocation."""
-    inventory = AntaInventory()
-    for index in range(device_count):
-        inventory.add_device(
-            AsyncEOSDevice(
-                host=f"device-{index}.anta.arista.com",
-                username="admin",
-                password="password",  # noqa: S106
-                name=f"device-{index}",
-                disable_cache=True,
-            ),
-        )
-    return inventory
-
-
-def _has_error_result(test_data: dict[str, Any]) -> bool:
-    """Return whether a unit test expects a parent or atomic error result."""
-    expected = test_data["expected"]
-    return expected["result"] is AntaTestStatus.ERROR or any(atomic_result["result"] is AntaTestStatus.ERROR for atomic_result in expected.get("atomic_results", []))
-
-
 class AntaMockEnvironment:  # pylint: disable=too-few-public-methods
     """Generate an ANTA test catalog from the unit tests data. It can be accessed using the `catalog` attribute of this class instance.
 
     Also provide the attribute 'eos_data_catalog` with the output of all the commands used in the test catalog.
 
     Each module in `tests.units.anta_tests` has a `DATA` constant.
+    The `DATA` structure is a list of dictionaries used to parametrize the test. The list elements have the following keys:
+    - `name` (str): Test name as displayed by Pytest.
+    - `test` (AntaTest): An AntaTest subclass imported in the test module - e.g. VerifyUptime.
+    - `eos_data` (list[dict]): List of data mocking EOS returned data to be passed to the test.
+    - `inputs` (dict): Dictionary to instantiate the `test` inputs as defined in the class from `test`.
 
-    The `DATA` structure is a dictionary where:
-        - Each key is a tuple of size 2 containing:
-            - An AntaTest subclass imported in the test module as first element - e.g. VerifyUptime.
-            - A string used as name displayed by pytest as second element.
-        - Each value is an instance of AntaUnitTest, which is a Python TypedDict.
-
-    And AntaUnitTest have the following keys:
-        - `eos_data` (list[dict]): List of data mocking EOS returned data to be passed to the test.
-        - `inputs` (dict): Dictionary to instantiate the `test` inputs as defined in the class from `test`.
-        - `expected` (dict): Expected test result structure, a dictionary containing a key `result` containing one of the allowed status
-        (`Literal[AntaTestStatus.SUCCESS, AntaTestStatus.FAILURE, AntaTestStatus.ERROR, AntaTestStatus.SKIPPED]`) and
-        optionally a key `messages` which is a list(str) and each message is expected to be a substring of one of the actual messages in the TestResult object.
-
-    Unit test cases expecting a parent or atomic error result are excluded from the benchmark catalog.
-
-    The keys of `eos_data_catalog` is the tuple (AntaTest subclass, A string used as name displayed by pytest). The values are `eos_data`.
+    The keys of `eos_data_catalog` is the tuple (DATA['test'], DATA['name']). The values are `eos_data`.
     """
 
     def __init__(self) -> None:
@@ -122,14 +87,10 @@ class AntaMockEnvironment:  # pylint: disable=too-few-public-methods
         test_definitions = []
         eos_data_catalog = {}
         for module in import_test_modules():
-            for (test, name), test_data in module.DATA.items():
-                if _has_error_result(test_data):
-                    continue
-
-                # Extract the test class, name and test data from a nested tuple structure:
-                # unit test: Tuple[Tuple[Type[AntaTest], str], AntaUnitTest]
-                result_overwrite = AntaTest.Input.ResultOverwrite(custom_field=name)
-                if test_data.get("inputs") is None:
+            for test_data in module.DATA:
+                test = test_data["test"]
+                result_overwrite = AntaTest.Input.ResultOverwrite(custom_field=test_data["name"])
+                if test_data["inputs"] is None:
                     inputs = test.Input(result_overwrite=result_overwrite)
                 else:
                     inputs = test.Input(**test_data["inputs"], result_overwrite=result_overwrite)
@@ -137,7 +98,7 @@ class AntaMockEnvironment:  # pylint: disable=too-few-public-methods
                     test=test,
                     inputs=inputs,
                 )
-                eos_data_catalog[(test.__name__, name)] = test_data["eos_data"]
+                eos_data_catalog[(test.__name__, test_data["name"])] = test_data["eos_data"]
                 test_definitions.append(test_definition)
 
         return (AntaCatalog(tests=test_definitions), eos_data_catalog)

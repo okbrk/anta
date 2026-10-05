@@ -1,34 +1,27 @@
-# Copyright (c) 2023-2026 Arista Networks, Inc.
+# Copyright (c) 2023-2025 Arista Networks, Inc.
 # Use of this source code is governed by the Apache License 2.0
 # that can be found in the LICENSE file.
 """Module related to VXLAN tests."""
 
-# Pyright does not understand AntaTest.Input typing
-# pyright: reportAttributeAccessIssue=false
+# Mypy does not understand AntaTest.Input typing
+# mypy: disable-error-code=attr-defined
 from __future__ import annotations
 
-from ipaddress import IPv4Address, IPv6Address
+from ipaddress import IPv4Address
 from typing import TYPE_CHECKING, ClassVar
 
-from pydantic import Field, model_validator
+from pydantic import Field
 
-from anta.custom_types import VlanId, Vni, VxlanSrcIntf
+from anta.custom_types import Vlan, Vni, VxlanSrcIntf
 from anta.models import AntaCommand, AntaTest
 from anta.tools import get_value
 
 if TYPE_CHECKING:
-    import sys
-
-    if sys.version_info >= (3, 11):
-        from typing import Self
-    else:
-        from typing_extensions import Self
-
     from anta.models import AntaTemplate
 
 
 class VerifyVxlan1Interface(AntaTest):
-    """Verifies the Vxlan1 interface status.
+    """Verifies if the Vxlan1 interface is configured and 'up/up'.
 
     Warnings
     --------
@@ -48,26 +41,26 @@ class VerifyVxlan1Interface(AntaTest):
     ```
     """
 
+    description = "Verifies the Vxlan1 interface status."
     categories: ClassVar[list[str]] = ["vxlan"]
     commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaCommand(command="show interfaces description", revision=1)]
 
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyVxlan1Interface."""
-        self.result.is_success()
         command_output = self.instance_commands[0].json_output
-
-        # Skipping the test if the Vxlan1 interface is not configured
-        if "Vxlan1" not in (interface_details := command_output["interfaceDescriptions"]):
-            self.result.is_skipped("Interface: Vxlan1 - Not configured")
-            return
-
-        line_protocol_status = interface_details["Vxlan1"]["lineProtocolStatus"]
-        interface_status = interface_details["Vxlan1"]["interfaceStatus"]
-
-        # Checking against both status and line protocol status
-        if interface_status != "up" or line_protocol_status != "up":
-            self.result.is_failure(f"Interface: Vxlan1 - Incorrect Line protocol status/Status - Expected: up/up Actual: {line_protocol_status}/{interface_status}")
+        if "Vxlan1" not in command_output["interfaceDescriptions"]:
+            self.result.is_skipped("Vxlan1 interface is not configured")
+        elif (
+            command_output["interfaceDescriptions"]["Vxlan1"]["lineProtocolStatus"] == "up"
+            and command_output["interfaceDescriptions"]["Vxlan1"]["interfaceStatus"] == "up"
+        ):
+            self.result.is_success()
+        else:
+            self.result.is_failure(
+                f"Vxlan1 interface is {command_output['interfaceDescriptions']['Vxlan1']['lineProtocolStatus']}"
+                f"/{command_output['interfaceDescriptions']['Vxlan1']['interfaceStatus']}",
+            )
 
 
 class VerifyVxlanConfigSanity(AntaTest):
@@ -93,27 +86,27 @@ class VerifyVxlanConfigSanity(AntaTest):
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyVxlanConfigSanity."""
-        self.result.is_success()
         command_output = self.instance_commands[0].json_output
-
-        # Skipping the test if VXLAN is not configured
         if "categories" not in command_output or len(command_output["categories"]) == 0:
             self.result.is_skipped("VXLAN is not configured")
             return
-
-        # Verifies the Vxlan config sanity
-        categories_to_check = ["localVtep", "mlag", "pd"]
-        for category in categories_to_check:
-            if not get_value(command_output, f"categories.{category}.allCheckPass"):
-                self.result.is_failure(f"Vxlan Category: {category} - Config sanity check is not passing")
+        failed_categories = {
+            category: content
+            for category, content in command_output["categories"].items()
+            if category in ["localVtep", "mlag", "pd"] and content["allCheckPass"] is not True
+        }
+        if len(failed_categories) > 0:
+            self.result.is_failure(f"VXLAN config sanity check is not passing: {failed_categories}")
+        else:
+            self.result.is_success()
 
 
 class VerifyVxlanVniBinding(AntaTest):
-    """Verifies the VNI-VLAN, VNI-VRF bindings of the Vxlan1 interface.
+    """Verifies the VNI-VLAN bindings of the Vxlan1 interface.
 
     Expected Results
     ----------------
-    * Success: The test will pass if the VNI-VLAN and VNI-VRF bindings provided are properly configured.
+    * Success: The test will pass if the VNI-VLAN bindings provided are properly configured.
     * Failure: The test will fail if any VNI lacks bindings or if any bindings are incorrect.
     * Skipped: The test will be skipped if the Vxlan1 interface is not configured.
 
@@ -125,7 +118,6 @@ class VerifyVxlanVniBinding(AntaTest):
           bindings:
             10010: 10
             10020: 20
-            500: PROD
     ```
     """
 
@@ -135,41 +127,43 @@ class VerifyVxlanVniBinding(AntaTest):
     class Input(AntaTest.Input):
         """Input model for the VerifyVxlanVniBinding test."""
 
-        bindings: dict[Vni, VlanId | str]
-        """VNI-VLAN or VNI-VRF bindings to verify."""
+        bindings: dict[Vni, Vlan]
+        """VNI to VLAN bindings to verify."""
 
     @AntaTest.anta_test
     def test(self) -> None:
         """Main test function for VerifyVxlanVniBinding."""
         self.result.is_success()
 
+        no_binding = []
+        wrong_binding = []
+
         if (vxlan1 := get_value(self.instance_commands[0].json_output, "vxlanIntfs.Vxlan1")) is None:
-            self.result.is_skipped("Interface: Vxlan1 - Not configured")
+            self.result.is_skipped("Vxlan1 interface is not configured")
             return
 
-        for vni, vlan_vrf in self.inputs.bindings.items():
+        for vni, vlan in self.inputs.bindings.items():
             str_vni = str(vni)
-            retrieved_vlan = ""
-            retrieved_vrf = ""
-            if all([str_vni in vxlan1["vniBindings"], isinstance(vlan_vrf, int)]):
-                retrieved_vlan = get_value(vxlan1, f"vniBindings..{str_vni}..vlan", separator="..")
+            if str_vni in vxlan1["vniBindings"]:
+                retrieved_vlan = vxlan1["vniBindings"][str_vni]["vlan"]
             elif str_vni in vxlan1["vniBindingsToVrf"]:
-                if isinstance(vlan_vrf, int):
-                    retrieved_vlan = get_value(vxlan1, f"vniBindingsToVrf..{str_vni}..vlan", separator="..")
-                else:
-                    retrieved_vrf = get_value(vxlan1, f"vniBindingsToVrf..{str_vni}..vrfName", separator="..")
-            if not any([retrieved_vlan, retrieved_vrf]):
-                self.result.is_failure(f"Interface: Vxlan1 VNI: {str_vni} - Binding not found")
+                retrieved_vlan = vxlan1["vniBindingsToVrf"][str_vni]["vlan"]
+            else:
+                no_binding.append(str_vni)
+                retrieved_vlan = None
 
-            elif retrieved_vlan and vlan_vrf != retrieved_vlan:
-                self.result.is_failure(f"Interface: Vxlan1 VNI: {str_vni} - Wrong VLAN binding - Expected: {vlan_vrf} Actual: {retrieved_vlan}")
+            if retrieved_vlan and vlan != retrieved_vlan:
+                wrong_binding.append({str_vni: retrieved_vlan})
 
-            elif retrieved_vrf and vlan_vrf != retrieved_vrf:
-                self.result.is_failure(f"Interface: Vxlan1 VNI: {str_vni} - Wrong VRF binding - Expected: {vlan_vrf} Actual: {retrieved_vrf}")
+        if no_binding:
+            self.result.is_failure(f"The following VNI(s) have no binding: {no_binding}")
+
+        if wrong_binding:
+            self.result.is_failure(f"The following VNI(s) have the wrong VLAN binding: {wrong_binding}")
 
 
 class VerifyVxlanVtep(AntaTest):
-    """Verifies Vxlan1 VTEP peers.
+    """Verifies the VTEP peers of the Vxlan1 interface.
 
     Expected Results
     ----------------
@@ -205,21 +199,21 @@ class VerifyVxlanVtep(AntaTest):
         inputs_vteps = [str(input_vtep) for input_vtep in self.inputs.vteps]
 
         if (vxlan1 := get_value(self.instance_commands[0].json_output, "interfaces.Vxlan1")) is None:
-            self.result.is_skipped("Interface: Vxlan1 - Not configured")
+            self.result.is_skipped("Vxlan1 interface is not configured")
             return
 
         difference1 = set(inputs_vteps).difference(set(vxlan1["vteps"]))
         difference2 = set(vxlan1["vteps"]).difference(set(inputs_vteps))
 
         if difference1:
-            self.result.is_failure(f"The following VTEP peer(s) are missing from the Vxlan1 interface: {', '.join(sorted(difference1))}")
+            self.result.is_failure(f"The following VTEP peer(s) are missing from the Vxlan1 interface: {sorted(difference1)}")
 
         if difference2:
-            self.result.is_failure(f"Unexpected VTEP peer(s) on Vxlan1 interface: {', '.join(sorted(difference2))}")
+            self.result.is_failure(f"Unexpected VTEP peer(s) on Vxlan1 interface: {sorted(difference2)}")
 
 
 class VerifyVxlan1ConnSettings(AntaTest):
-    """Verifies Vxlan1 source interface and UDP port.
+    """Verifies the interface vxlan1 source interface and UDP port.
 
     Expected Results
     ----------------
@@ -244,7 +238,7 @@ class VerifyVxlan1ConnSettings(AntaTest):
         """Input model for the VerifyVxlan1ConnSettings test."""
 
         source_interface: VxlanSrcIntf
-        """Source interface of vxlan1 interface."""
+        """Source loopback interface of vxlan1 interface."""
         udp_port: int = Field(ge=1024, le=65335)
         """UDP port used for vxlan1 interface."""
 
@@ -257,7 +251,7 @@ class VerifyVxlan1ConnSettings(AntaTest):
         # Skip the test case if vxlan1 interface is not configured
         vxlan_output = get_value(command_output, "interfaces.Vxlan1")
         if not vxlan_output:
-            self.result.is_skipped("Interface: Vxlan1 - Not configured")
+            self.result.is_skipped("Vxlan1 interface is not configured.")
             return
 
         src_intf = vxlan_output.get("srcIpIntf")
@@ -265,72 +259,6 @@ class VerifyVxlan1ConnSettings(AntaTest):
 
         # Check vxlan1 source interface and udp port
         if src_intf != self.inputs.source_interface:
-            self.result.is_failure(f"Interface: Vxlan1 - Incorrect Source interface - Expected: {self.inputs.source_interface} Actual: {src_intf}")
+            self.result.is_failure(f"Source interface is not correct. Expected `{self.inputs.source_interface}` as source interface but found `{src_intf}` instead.")
         if port != self.inputs.udp_port:
-            self.result.is_failure(f"Interface: Vxlan1 - Incorrect UDP port - Expected: {self.inputs.udp_port} Actual: {port}")
-
-
-class VerifyVxlan1VVTEPIPAddresses(AntaTest):
-    """Verifies the VVTEP IP addresses.
-
-    Supports IPv4-only, IPv6-only, or dual-stack. At least one address must be provided.
-
-    Expected Results
-    ----------------
-    * Success: Passes if the provided VVTEP IP addresses match the ones configured on the VXLAN interface.
-    * Failure: Fails if any provided VVTEP IP address does not match the configured value, or is not configured.
-    * Skipped: Skips if the Vxlan1 interface is not configured.
-
-    Examples
-    --------
-    ```yaml
-    anta.tests.vxlan:
-      - VerifyVxlan1VVTEPIPAddresses:
-          ipv4_address: 5.5.5.5
-          ipv6_address: fd00:dc:1::1
-    ```
-    """
-
-    categories: ClassVar[list[str]] = ["vxlan"]
-    commands: ClassVar[list[AntaCommand | AntaTemplate]] = [AntaCommand(command="show interfaces", revision=1)]
-
-    class Input(AntaTest.Input):
-        """Input model for the VerifyVxlan1VVTEPIPAddresses test."""
-
-        ipv4_address: IPv4Address | None = None
-        """VVTEP IPv4 address."""
-        ipv6_address: IPv6Address | None = None
-        """VVTEP IPv6 address."""
-
-        @model_validator(mode="after")
-        def validate_inputs(self) -> Self:
-            """Validate that at least one address is provided."""
-            if not self.ipv4_address and not self.ipv6_address:
-                msg = "'ipv4_address' or 'ipv6_address' must be provided"
-                raise ValueError(msg)
-            return self
-
-    @AntaTest.anta_test
-    def test(self) -> None:
-        """Main test function for VerifyVxlan1VVTEPIPAddresses."""
-        self.result.is_success()
-        command_output = self.instance_commands[0].json_output
-
-        # Skip the test case if vxlan1 interface is not configured
-        vxlan_output = get_value(command_output, "interfaces.Vxlan1")
-        if not vxlan_output:
-            self.result.is_skipped("Interface: Vxlan1 - Not configured")
-            return
-
-        checks: list[tuple[str, str, str]] = []
-        if self.inputs.ipv4_address is not None:
-            checks.append((str(self.inputs.ipv4_address), "vArpVtepAddr", "IPv4"))
-        if self.inputs.ipv6_address is not None:
-            checks.append((str(self.inputs.ipv6_address), "vArpVtepAddrV6", "IPv6"))
-
-        for expected, key, ip_version in checks:
-            configured = vxlan_output.get(key)
-            if configured is None:
-                self.result.is_failure(f"Interface: Vxlan1 - VVTEP {ip_version} address is not configured")
-            elif expected != configured:
-                self.result.is_failure(f"Interface: Vxlan1 - Incorrect VVTEP {ip_version} address - Expected: {expected} Actual: {configured}")
+            self.result.is_failure(f"UDP port is not correct. Expected `{self.inputs.udp_port}` as UDP port but found `{port}` instead.")

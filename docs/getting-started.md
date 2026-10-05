@@ -1,16 +1,5 @@
----
-title: Getting Started
-hide:
-  - tags
-tags:
-  - Getting Started
-  - CLI
-  - Inventory
-  - Catalog
----
-
 <!--
-  ~ Copyright (c) 2023-2026 Arista Networks, Inc.
+  ~ Copyright (c) 2023-2025 Arista Networks, Inc.
   ~ Use of this source code is governed by the Apache License 2.0
   ~ that can be found in the LICENSE file.
   -->
@@ -19,7 +8,7 @@ This section shows how to use ANTA with basic configuration. All examples are ba
 
 ## Installation
 
-The easiest way to install ANTA package is to run Python (`>=3.10`) and its pip package to install:
+The easiest way to install ANTA package is to run Python (`>=3.9`) and its pip package to install:
 
 ```bash
 pip install anta[cli]
@@ -29,7 +18,7 @@ For more details about how to install package, please see the [requirements and 
 
 ## Configure Arista EOS devices
 
-For ANTA to be able to connect to your target devices, you need to configure your management interface.
+For ANTA to be able to connect to your target devices, you need to configure your management interface
 
 ```eos
 vrf instance MGMT
@@ -66,15 +55,15 @@ ANTA uses an inventory to list the target devices for the tests. You can create 
 
 ## Test Catalog
 
-To test your network, ANTA relies on a test catalog to list all the tests to run against your inventory. A test catalog references Python classes in a YAML file.
+To test your network, ANTA relies on a test catalog to list all the tests to run against your inventory. A test catalog references python functions into a yaml file.
 
 The structure to follow is like:
 
 ```yaml
 <anta_tests_submodule>:
-  - <AntaTest subclass>:
-      <AntaTest.Input field>:
-        <AntaTest.Input field value>
+  - <anta_tests_submodule function name>:
+      <test function option>:
+        <test function option value>
 ```
 
 > You can read more details about how to build your catalog [here](usage-inventory-catalog.md#test-catalog)
@@ -97,16 +86,14 @@ This entrypoint has multiple options to manage test coverage and reporting.
 --8<-- "anta_help.txt"
 ```
 
-To run the NRFU, you need to select an output format amongst [`csv`, `json`, `md-report`, `table`, `text`, `tpl-report`].
-
-For a first usage, `table` is recommended. By default, all test results for all devices are rendered, but it can be changed to a report per test case or per host.
-
 ```bash
 --8<-- "anta_nrfu_help.txt"
 ```
 
+To run the NRFU, you need to select an output format amongst ["json", "table", "text", "tpl-report"]. For a first usage, `table` is recommended.  By default all test results for all devices are rendered but it can be changed to a report per test case or per host
+
 !!! Note
-    The following examples show how to pass all the CLI options.
+    The following examples shows how to pass all the CLI options.
 
     See how to use environment variables instead in the [CLI overview](cli/overview.md#anta-environment-variables)
 
@@ -114,30 +101,25 @@ For a first usage, `table` is recommended. By default, all test results for all 
 
 ```bash
 --8<-- "getting-started/anta_nrfu_table.sh"
+--8<-- "getting-started/anta_nrfu_table.output"
 ```
-
-![anta nrfu table output](imgs/getting-started/anta_nrfu_table.svg){ class="img_center" loading=lazy width="1600" }
 
 #### Report in text mode
 
 ```bash
 --8<-- "getting-started/anta_nrfu_text.sh"
+--8<-- "getting-started/anta_nrfu_text.output"
 ```
-
-![anta nrfu text output](imgs/getting-started/anta_nrfu_text.svg){ class="img_center" loading=lazy width="1600" }
 
 #### Report in JSON format
 
 ```bash
 --8<-- "getting-started/anta_nrfu_json.sh"
+--8<-- "getting-started/anta_nrfu_json.output"
 ```
-
-![anta nrfu json output](imgs/getting-started/anta_nrfu_json.svg){ class="img_center" loading=lazy width="1600" }
 
 ### Basic usage in a Python script
 
-<!-- fmt: off -->
 ```python
 --8<-- "anta_runner.py"
 ```
-<!-- fmt: on -->

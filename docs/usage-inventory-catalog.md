@@ -1,15 +1,5 @@
----
-title: Inventory and Test catalog
-hide:
-  - tags
-tags:
-  - Inventory
-  - Catalog
-  - Configuration
----
-
 <!--
-  ~ Copyright (c) 2023-2026 Arista Networks, Inc.
+  ~ Copyright (c) 2023-2025 Arista Networks, Inc.
   ~ Use of this source code is governed by the Apache License 2.0
   ~ that can be found in the LICENSE file.
   -->
@@ -38,24 +28,15 @@ anta_inventory:
       name: < name to display in report. Default is host:port (Optional) >
       tags: < list of tags to use to filter inventory during tests >
       disable_cache: < Disable cache per hosts. Default is False. >
-      use_session_auth: < Enable session-based authentication for this host. Default is False. >
-      ssl_params:
-        ciphers: < OpenSSL cipher list. Default is inherited from ANTA_SSL_CIPHERS. >
-        verify: < Verify the HTTPS certificate. Default is False. >
-        check_hostname: < Verify the certificate hostname. Requires verify. Default is False. >
   networks:
     - network: < network using CIDR notation >
       tags: < list of tags to use to filter inventory during tests >
       disable_cache: < Disable cache per network. Default is False. >
-      use_session_auth: < Enable session-based authentication for all hosts in this network. Default is False. >
-      ssl_params: < SSL parameters applied to all hosts in this network. >
   ranges:
     - start: < first ip address value of the range >
       end: < last ip address value of the range >
       tags: < list of tags to use to filter inventory during tests >
       disable_cache: < Disable cache per range. Default is False. >
-      use_session_auth: < Enable session-based authentication for all hosts in this range. Default is False. >
-      ssl_params: < SSL parameters applied to all hosts in this range. >
 ```
 
 The inventory file must start with the `anta_inventory` key then define one or multiple methods:
@@ -64,16 +45,10 @@ The inventory file must start with the `anta_inventory` key then define one or m
 - `networks`: scan a network for devices accessible via eAPI
 - `ranges`: scan a range for devices accessible via eAPI
 
-A full description of the inventory model is available in [API documentation](api/inventory.md)
+A full description of the inventory model is available in [API documentation](api/inventory.models.input.md)
 
-!!! info
-    Caching can be disabled per device, network or range by setting the `disable_cache` key to `True` in the inventory file. For more details about how caching is implemented in ANTA, please refer to [Caching in ANTA](advanced_usages/caching.md).
-
-!!! info
-    Session-based authentication can be enabled per device, network or range by setting `use_session_auth: true`. The per-device value can be overridden globally via the `--use-session-auth` / `--no-session-auth` CLI flags or the `ANTA_USE_SESSION_AUTH` environment variable. Session-based authentication is only available on device types that advertise the `supports_session_auth` capability (e.g. `AsyncEOSDevice`). If `use_session_auth` is enabled in the inventory for a device type that does not support it, ANTA raises an exception during inventory loading; if it is requested globally from the CLI or environment variable, ANTA logs a warning for unsupported devices.
-
-!!! info
-    SSL parameters can be configured per device, network or range. When `ssl_params` is omitted, HTTPS connections inherit the cipher list from `ANTA_SSL_CIPHERS`. An explicit `ssl_params` mapping takes precedence; use `ssl_params: {}` to keep Python's default ciphers for one inventory entry when the global variable is set. Inventory parsing is independent of the device implementation: if a device type does not support SSL, parsing succeeds and ANTA warns that the SSL parameters are ignored for that device.
+> [!INFO]
+> Caching can be disabled per device, network or range by setting the `disable_cache` key to `True` in the inventory file. For more details about how caching is implemented in ANTA, please refer to [Caching in ANTA](advanced_usages/caching.md).
 
 ### Example
 
@@ -96,29 +71,13 @@ anta_inventory:
     tags: ['fabric', 'l2leaf']
 ```
 
-### Device Connection and Refresh
-
-Before running tests or other eAPI commands, ANTA refreshes each device to verify its endpoint and collect platform information. ANTA refreshes inventory devices concurrently, while the requests shown below occur sequentially for each device.
-
-`--timeout` and `ANTA_TIMEOUT` configure the timeout used for eAPI command requests, including inventory refresh, tests, `anta exec`, and `anta debug`. They do not configure the preliminary eAPI endpoint check or session login; each of those requests gets its own fixed five-second HTTPX timeout window.
-
-<textarea hidden class="mermaid-zoom-source timeout-sequence-diagram-source" data-title="ANTA Device Connection and Refresh">
---8<-- "inventory-refresh.mmd"
-</textarea>
-
-```mermaid
---8<-- "inventory-refresh.mmd"
-```
-
-With session authentication, login occurs before the endpoint check. The timeout values are independent and do not form a single overall deadline.
-
 ## Test Catalog
 
 A test catalog is an instance of the [AntaCatalog](./api/catalog.md#anta.catalog.AntaCatalog) class.
 
 ### Test Catalog File
 
-In addition to the inventory file, you also have to define a catalog of tests to execute against your devices. This catalog lists all your tests, their inputs and their tags.
+In addition to the inventory file, you also have to define a catalog of tests to execute against your devices. This catalog list all your tests, their inputs and their tags.
 
 A valid test catalog file must have the following structure in either YAML or JSON:
 
@@ -220,7 +179,7 @@ anta.tests:
           custom_field: "Test run by John Doe"
 ```
 
-[This test catalog example](https://github.com/aristanetworks/anta/blob/main/examples/tests.yaml) is maintained with all non-advisory tests defined in the `anta.tests` Python module.
+[This test catalog example](https://github.com/aristanetworks/anta/blob/main/examples/tests.yaml) is maintained with all the tests defined in the `anta.tests` Python module.
 
 ### Test tags
 
@@ -240,15 +199,15 @@ anta.tests.system:
         tags: ['leaf']
 ```
 
-!!! info
-    When using the CLI, you can filter the NRFU execution using tags. Refer to [this section](cli/tag-management.md) of the CLI documentation.
+> [!INFO]
+> When using the CLI, you can filter the NRFU execution using tags. Refer to [this section](cli/tag-management.md) of the CLI documentation.
 
 ### Tests available in ANTA
 
 All tests available as part of the ANTA framework are defined under the `anta.tests` Python module and are categorised per family (Python submodule).
 The complete list of the tests and their respective inputs is available at the [tests section](api/tests.md) of this website.
 
-To run a test to verify the EOS software version, you can do:
+To run test to verify the EOS software version, you can do:
 
 ```yaml
 anta.tests.software:
@@ -281,53 +240,84 @@ anta.tests.software:
 }
 ```
 
-The following example is the catalog used throughout this documentation:
+The following example is a very minimal test catalog:
 
 ```yaml
---8<-- "getting-started/catalog.yml"
+---
+# Load anta.tests.software
+anta.tests.software:
+  # Verifies the device is running one of the allowed EOS version.
+  - VerifyEOSVersion:
+      # List of allowed EOS versions.
+      versions:
+        - 4.25.4M
+        - 4.26.1F
+
+# Load anta.tests.system
+anta.tests.system:
+  # Verifies the device uptime is higher than a value.
+  - VerifyUptime:
+      minimum: 1
+
+# Load anta.tests.configuration
+anta.tests.configuration:
+  # Verifies ZeroTouch is disabled.
+  - VerifyZeroTouch:
+  - VerifyRunningConfigDiffs:
 ```
 
 ### Catalog with custom tests
 
 In case you want to leverage your own tests collection, use your own Python package in the test catalog.
-For instance, if a custom test is defined in the importable Python module `anta_custom.dc_project`, the test catalog entry is:
+So for instance, if my custom tests are defined in the `custom.tests.system` Python module, the test catalog will be:
 
 ```yaml
---8<-- "custom-tests-catalog.yml"
+custom.tests.system:
+  - VerifyPlatform:
+    type: ['cEOS-LAB']
 ```
 
-!!! tip
-    **How to create custom tests**
-
-    To create your custom tests, you should refer to this [documentation](advanced_usages/custom-tests.md)
+> [!TIP]
+> **How to create custom tests**
+>
+> To create your custom tests, you should refer to this [documentation](advanced_usages/custom-tests.md)
 
 ### Customize test description and categories
 
 It might be interesting to use your own categories and customized test description to build a better report for your environment. ANTA comes with a handy feature to define your own `categories` and `description` in the report.
 
-In your test catalog, use the `result_overwrite` dictionary with the `categories` and `description` keys to override these values in your report:
+In your test catalog, use `result_overwrite` dictionary with `categories` and `description` to just overwrite this values in your report:
 
 ```yaml
---8<-- "result-overwrite-catalog.yml"
+anta.tests.configuration:
+  - VerifyZeroTouch: # Verifies ZeroTouch is disabled.
+      result_overwrite:
+        categories: ['demo', 'pr296']
+        description: A custom test
+  - VerifyRunningConfigDiffs:
+anta.tests.interfaces:
+  - VerifyInterfaceUtilization:
 ```
 
-Run the catalog against a device:
+Once you run `anta nrfu table`, you will see following output:
 
 ```bash
-anta nrfu --device dc1-spine1 --catalog docs/snippets/result-overwrite-catalog.yml table
+┏━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Device IP ┃ Test Name                  ┃ Test Status ┃ Message(s) ┃ Test description                              ┃ Test category ┃
+┡━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ spine01   │ VerifyZeroTouch            │ success     │            │ A custom test                                 │ demo, pr296   │
+│ spine01   │ VerifyRunningConfigDiffs   │ success     │            │                                               │ configuration │
+│ spine01   │ VerifyInterfaceUtilization │ success     │            │ Verifies interfaces utilization is below 75%. │ interfaces    │
+└───────────┴────────────────────────────┴─────────────┴────────────┴───────────────────────────────────────────────┴───────────────┘
 ```
-
-![ANTA table report with customized result fields](imgs/anta_nrfu_device_dc1spine1_catalog_docs_snippets_resultoverwritecatalogyml_table.svg){ class="img_center" loading=lazy width="1600" }
 
 ### Example script to merge catalogs
 
 The following script reads all the files in `intended/test_catalogs/` with names `<device_name>-catalog.yml` and merge them together inside one big catalog `anta-catalog.yml` using the new `AntaCatalog.merge_catalogs()` class method.
 
-<!-- fmt: off -->
 ```python
 --8<-- "merge_catalogs.py"
 ```
-<!-- fmt: on -->
 
-!!! warning
-    The `AntaCatalog.merge()` method is deprecated and will be removed in ANTA v2.0. Please use the `AntaCatalog.merge_catalogs()` class method instead.
+> [!WARNING]
+> The `AntaCatalog.merge()` method is deprecated and will be removed in ANTA v2.0. Please use the `AntaCatalog.merge_catalogs()` class method instead.
